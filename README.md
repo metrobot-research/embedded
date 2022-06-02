@@ -1,5 +1,4 @@
-# embedded
-Code for the embedded layer of MetroBot.
-
-# Sponsors
-The MetroBot Research Group is sponsored by a grant from the UC Berkeley Student Technology Fund, techfund.berkeley.edu.
+Sources:
+- [Ascento: A Two-Wheeled Jumping Robot](https://arxiv.org/abs/2005.11435)
+- [Shay Sackett's Inverted Pendulum Robot](https://www.shaysackett.com/inverted-pendulum-robot/)
+- [Sonic the Hedgehog Robot](https://www.youtube.com/watch?v=yF14N03rkS4)
