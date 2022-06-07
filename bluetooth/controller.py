@@ -36,6 +36,7 @@ async def run_controller(writer, input_type):
     keyboard = input_type == '0'
     if not keyboard and len(joysticks) == 0:
         print("Error: No joysticks detected, exiting...")
+        sys.exit()
 
     while True:
         if not keyboard:
@@ -64,7 +65,6 @@ async def run_controller(writer, input_type):
                 print("Setting turn speed: ", 0)
         for event in pygame.event.get():
             if event.type == QUIT:
-                pygame.quit()
                 sys.exit()
 
         await asyncio.sleep(0.1)
