@@ -75,8 +75,11 @@ async def open_bluetooth_terminal(port, baudrate):
     controller = run_controller(writer)
     await asyncio.wait([receiver, controller])
 
+if len(sys.argv) != 2:
+    print("Invalid arguments. Correct usage: python3 controller.py <port name>")
+    sys.exit()
 loop = asyncio.get_event_loop()
-task = open_bluetooth_terminal('/dev/cu.%s' % DEVICE_NAME, 115200)
+task = open_bluetooth_terminal(sys.argv[1], 115200)
 try:
     loop.run_until_complete(task)
     loop.close()
