@@ -42,52 +42,34 @@ async def run_controller(writer):
             writer.write(b'{"command":0, "args":[%6f]}\n' % (-joysticks[0].get_axis(1)))
             writer.write(b'{"command":1, "args":[%6f]}\n' % joysticks[0].get_axis(2))
             print("Setting speed: ", -joysticks[0].get_axis(1), ", turn speed: ", joysticks[0].get_axis(2))
-        forward_control = False
-        turn_control = False
+        else:
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_UP]:
+                writer.write(b'{"command":0,"args":[%6f]}\n' % FORWARD_SPEED)
+                print("Setting speed: ", FORWARD_SPEED)
+            elif keys[pygame.K_DOWN]:
+                writer.write(b'{"command":0,"args":[%6f]}\n' % (-FORWARD_SPEED))
+                print("Setting speed: ", -FORWARD_SPEED)
+            else:
+                writer.write(b'{"command":0,"args":[0]}\n')
+                print("Setting speed: ", 0)
+            if keys[pygame.K_LEFT]:
+                writer.write(b'{"command":1,"args":[%6f]}\n' % (-TURN_SPEED))
+                print("Setting turn speed", -TURN_SPEED)
+            elif keys[pygame.K_RIGHT]:
+                writer.write(b'{"command":1,"args":[%6f]}\n' % TURN_SPEED)
+                print("Setting turn speed: ", TURN_SPEED)
+            else:
+                writer.write(b'{"command":1,"args":[0]}\n')
+                print("Setting turn speed: ", 0)
         for event in pygame.event.get():
-            if keyboard:
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_UP:
-                        writer.write(b'{"command":0,"args":[%6f]}\n' % FORWARD_SPEED)
-                        print("Setting speed: ", FORWARD_SPEED)
-                        forward_control = True
-                    if event.key == pygame.K_DOWN:
-                        writer.write(b'{"command":0,"args":[%6f]}\n' % (-FORWARD_SPEED))
-                        print("Setting speed: ", -FORWARD_SPEED)
-                        forward_control = True
-                    if event.key == pygame.K_LEFT:
-                        writer.write(b'{"command":1,"args":[%6f]}\n' % (-TURN_SPEED))
-                        print("Setting turn speed", -TURN_SPEED)
-                        turn_control = True
-                    if event.key == pygame.K_RIGHT:
-                        writer.write(b'{"command":1,"args":[%6f]}\n' % TURN_SPEED)
-                        print("Setting turn speed: ", TURN_SPEED)
-                        turn_control = True
             if event.type == QUIT:
                 pygame.quit()
                 sys.exit()
-        if keyboard:
-            if not forward_control:
-                writer.write(b'{"command":0,"args":[0]}\n')
-            if not turn_control:
-                writer.write(b'{"command":1,"args":[0]}\n')
 
         await asyncio.sleep(0.1)
 
 async def open_bluetooth_terminal(port, baudrate):
-    # print("Checking if device at %s is paired..." % DEVICE_MAC_ADDRESS)
-    # if not os.path.exists(port):
-    #     print("Pairing with device at %s..." % DEVICE_MAC_ADDRESS)
-    #     rc = run_terminal_command(["blueutil", "--pair", DEVICE_MAC_ADDRESS])
-    #     if rc != 0:
-    #         print("Failed to pair with device. Exiting...")
-    #         return
-    # print("Connecting to device at %s..." % DEVICE_MAC_ADDRESS)
-    # rc = run_terminal_command(["blueutil", "--connect", DEVICE_MAC_ADDRESS])
-    # if rc != 0:
-    #     print("Failed to connect to device. Exiting...")
-    #     return
-    # print("Connected successfully.")
     reader, writer = await serial_asyncio.open_serial_connection(url=port, baudrate=baudrate)
     receiver = receive(reader)
     controller = run_controller(writer)
