@@ -227,7 +227,7 @@ void set_velocity(JsonArray arguments) {
   }
   r_v = velocity_input * VELOCITY_LIMIT;
   char buffer[40];
-  sprintf(buffer, "Setting theta_dot: %d.", r_v);
+  sprintf(buffer, "Setting velocity: %6f.", r_v);
   Serial.println(buffer);
 }
 
@@ -243,7 +243,7 @@ void set_theta_dot(JsonArray arguments) {
   }
   r_theta_dot = theta_dot_input * THETA_DOT_LIMIT;
   char buffer[40];
-  sprintf(buffer, "Setting theta_dot: %d.", r_theta_dot);
+  sprintf(buffer, "Setting theta_dot: %6f.", r_theta_dot);
   Serial.println(buffer);
 }
 
