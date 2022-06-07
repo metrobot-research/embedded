@@ -21,7 +21,7 @@ async def receive(reader):
         data = await reader.readuntil(b'\n')
         print(f'(recv): {data.strip().decode()}')
 
-async def run_controller(writer):
+async def run_controller(writer, input_type):
     global angle1, angle2
     writer.write(b"Controller connected.\n")
 
@@ -33,9 +33,9 @@ async def run_controller(writer):
     pygame.joystick.init()
     joysticks = [pygame.joystick.Joystick(x) for x in range(pygame.joystick.get_count())]
     
-    keyboard = len(joysticks) == 0
-    if keyboard:
-        print("Warning: No joysticks detected, enabling keyboard control")
+    keyboard = input_type == '0'
+    if not keyboard and len(joysticks) == 0:
+        print("Error: No joysticks detected, exiting...")
 
     while True:
         if not keyboard:
@@ -69,17 +69,17 @@ async def run_controller(writer):
 
         await asyncio.sleep(0.1)
 
-async def open_bluetooth_terminal(port, baudrate):
+async def open_bluetooth_terminal(port, baudrate, input_type):
     reader, writer = await serial_asyncio.open_serial_connection(url=port, baudrate=baudrate)
     receiver = receive(reader)
-    controller = run_controller(writer)
+    controller = run_controller(writer, input_type)
     await asyncio.wait([receiver, controller])
 
-if len(sys.argv) != 2:
-    print("Invalid arguments. Correct usage: python3 controller.py <port name>")
+if len(sys.argv) != 3:
+    print("Invalid arguments. Correct usage: python3 controller.py <port name> <input type> (0 for keyboard, 1 for joystick)")
     sys.exit()
 loop = asyncio.get_event_loop()
-task = open_bluetooth_terminal(sys.argv[1], 115200)
+task = open_bluetooth_terminal(sys.argv[1], 115200, sys.argv[2])
 try:
     loop.run_until_complete(task)
     loop.close()
