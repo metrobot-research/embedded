@@ -58,12 +58,20 @@ async def run_controller(writer):
                     if event.key == pygame.K_LEFT:
                         writer.write(b'{"command":1,"args":[%6f]}\n' % (-TURN_SPEED))
                         print("Setting turn speed", -TURN_SPEED)
+                        turn_control = True
                     if event.key == pygame.K_RIGHT:
                         writer.write(b'{"command":1,"args":[%6f]}\n' % TURN_SPEED)
                         print("Setting turn speed: ", TURN_SPEED)
+                        turn_control = True
             if event.type == QUIT:
                 pygame.quit()
                 sys.exit()
+        if keyboard:
+            if not forward_control:
+                writer.write(b'{"command":0,"args":[0]}\n')
+            if not turn_control:
+                writer.write(b'{"command":1,"args":[0]}\n')
+
         await asyncio.sleep(0.1)
 
 async def open_bluetooth_terminal(port, baudrate):
