@@ -62,6 +62,12 @@ volatile int countLTotal = 0; //left wheel
 volatile int countR = 0; //right wheel
 volatile int countL = 0; //left wheel
 
+volatile int countRHipTotal = 0; //right hip
+volatile int countLHipTotal = 0; //left hip
+volatile int countRHip = 0; //right hip
+volatile int countLHip = 0; //left hip
+
+
 // PID Constants for wheel velocity to create angle (loop one)
 double Kp_w = 0.030;
 double Ki_w = 0.3;
@@ -89,11 +95,15 @@ double u_theta_dot_l = 0; // used in negative for u_theta_r
 double r_theta_dot = 0; //commanded theta_dot, initialized @0 at startup
 double theta_dot_t = 0; //theta at a given time, initialized @0
 
-// TODO: Tune theta_dot PID values
 double Kp_theta_dot = 200;
 double Ki_theta_dot = 150;
 double Kd_theta_dot = 5;
-#define THETA_DOT_LIMIT 0.1
+#define THETA_DOT_LIMIT 4096
+
+double Kp_hip = 200;
+double Ki_hip = 150;
+double Kd_hip = 5;
+#define HIP_LIMIT 4096
 
 // Initializing hardware timer
 volatile bool deltaT = false;     // check timer interrupt
@@ -126,6 +136,7 @@ Vector3f acc_n_e;
 PID velocity_PID(&v_fwd,&r_phi_ph,&r_v,Kp_w,Ki_w,Kd_w, DIRECT);
 PID angle_PID(&phi_t,&u_fwd,&r_phi,Kp_phi,Ki_phi,Kd_phi, DIRECT);
 PID theta_dot_PID(&theta_dot_t,&u_theta_dot_l,&r_theta_dot,Kp_theta_dot,Ki_theta_dot,Kd_theta_dot, DIRECT);
+PID left_hip_PID(&theta_dot_t,&u_theta_dot_l,&r_theta_dot,Kp_theta_dot,Ki_theta_dot,Kd_theta_dot, DIRECT);
 
 void IRAM_ATTR onTime0() {
   portENTER_CRITICAL_ISR(&timerMux0);
@@ -133,12 +144,19 @@ void IRAM_ATTR onTime0() {
   // Get each wheel's encoder count:
   countR = -1*encoder1.getCount();
   countL = encoder2.getCount();
+  countRHip = -1*encoder3.getCount();
+  countLHip = encoder4.getCount();
+  
   // 
   countLTotal += countL;
   countRTotal += countR;
+  countLHipTotal += countLHip;
+  countRHipTotal += countRHip;
   // clear encoders
   encoder1.clearCount();
   encoder2.clearCount();
+  encoder3.clearCount();
+  encoder4.clearCount();
     
   deltaT = true; // time has passed
   portEXIT_CRITICAL_ISR(&timerMux0);
@@ -212,6 +230,11 @@ void init_velocity_PID(){
   velocity_PID.SetMode(AUTOMATIC);
 }
 void init_theta_dot_PID(){
+  theta_dot_PID.SetSampleTime(timestep_ms);
+  theta_dot_PID.SetOutputLimits(-THETA_DOT_LIMIT,THETA_DOT_LIMIT);
+  theta_dot_PID.SetMode(AUTOMATIC);
+}
+void init_left_hip_PID(){
   theta_dot_PID.SetSampleTime(timestep_ms);
   theta_dot_PID.SetOutputLimits(-THETA_DOT_LIMIT,THETA_DOT_LIMIT);
   theta_dot_PID.SetMode(AUTOMATIC);
@@ -376,8 +399,15 @@ void setup() {
   // Which wheel?
   encoder2.attachHalfQuad(5, 13);
   
+  // Which pins?
+  encoder3.attachHalfQuad(14, 15);
+  // Which pins?
+  encoder4.attachHalfQuad(18, 19);
+  
   encoder1.clearCount();
   encoder2.clearCount();
+  encoder3.clearCount();
+  encoder4.clearCount();
   
   pwm.begin();
   pwm.setOscillatorFrequency(27000000);
@@ -388,22 +418,22 @@ void setup() {
   pinMode(OCM3,INPUT);
   pinMode(OCM4,INPUT);
 
-  // Motor 1:
-  pwm.setPin(0,0,0);
-  pwm.setPin(1,0,0);
-  // Motor 2:
-  pwm.setPWM(2,0,0);
-  pwm.setPWM(3,0,0);
+  // // Motor 1:
+  // pwm.setPin(0,0,0);
+  // pwm.setPin(1,0,0);
+  // // Motor 2:
+  // pwm.setPWM(2,0,0);
+  // pwm.setPWM(3,0,0);
 
-  timer0 = timerBegin(0, 80, true);  // timer 0, MWDT clock period = 12.5 ns * TIMGn_Tx_WDT_CLK_PRESCALE -> 12.5 ns * 80 -> 1000 ns = 1 us, countUp
-  timerAttachInterrupt(timer0, &onTime0, true); // edge (not level) triggered
-  timerAlarmWrite(timer0, timestep_ms*1000, true); // 10000 * 1 us = 10 ms, autoreload true
-  timerAlarmEnable(timer0); // enable
-  delay(2000);
+  // timer0 = timerBegin(0, 80, true);  // timer 0, MWDT clock period = 12.5 ns * TIMGn_Tx_WDT_CLK_PRESCALE -> 12.5 ns * 80 -> 1000 ns = 1 us, countUp
+  // timerAttachInterrupt(timer0, &onTime0, true); // edge (not level) triggered
+  // timerAlarmWrite(timer0, timestep_ms*1000, true); // 10000 * 1 us = 10 ms, autoreload true
+  // timerAlarmEnable(timer0); // enable
+  // delay(2000);
   
-  init_angle_PID();
-  init_velocity_PID();
-  init_theta_dot_PID();
+  // init_angle_PID();
+  // init_velocity_PID();
+  // init_theta_dot_PID();
 }
 
 void loop() {
@@ -412,6 +442,20 @@ void loop() {
     portENTER_CRITICAL(&timerMux0);
     deltaT = false;
     portEXIT_CRITICAL(&timerMux0);
+
+    Serial.print("ocm1: ");
+    Serial.print(analogRead(OCM1));
+    Serial.print("ocm2: ");
+    Serial.print(analogRead(OCM2));
+    Serial.print("ocm3: ");
+    Serial.print(analogRead(OCM3));
+    Serial.print("ocm4: ");
+    Serial.print(analogRead(OCM4));
+    Serial.print("encoder3: ");
+    Serial.print(countRHipTotal);
+    Serial.print("encoder4: ");
+    Serial.print(countLHipTotal);
+    Serial.println();
 
     // Get new y values (x, xdot, phidot):
     // x: (m, average distance of left and right wheel encoders)
@@ -423,55 +467,55 @@ void loop() {
     // y_act(1) = -1*gyr.y*3.141592/180;     // convert to rad/s, correct direction
     
     // xdot: (m/s)
-    v_l = countL*4*3.14159265*r_w/(2248.86*timestep_ms/1000);
-    v_r = countR*4*3.14159265*r_w/(2248.86*timestep_ms/1000);
-    v_fwd = ((countL+countR)/2)*4*3.14159265*r_w/(2248.86*timestep_ms/1000); //(m/s)
+    // v_l = countL*4*3.14159265*r_w/(2248.86*timestep_ms/1000);
+    // v_r = countR*4*3.14159265*r_w/(2248.86*timestep_ms/1000);
+    // v_fwd = ((countL+countR)/2)*4*3.14159265*r_w/(2248.86*timestep_ms/1000); //(m/s)
     
-    // thetadot (m/s):
-        
-    getAngle();
-    velocity_PID.Compute();
-    r_phi=r_phi_ph;
-    angle_PID.Compute();
-    theta_dot_PID.Compute();
+    // // thetadot (m/s):
+    //     
+    // getAngle();
+    // velocity_PID.Compute();
+    // r_phi=r_phi_ph;
+    // angle_PID.Compute();
+    // theta_dot_PID.Compute();
     
-    Serial.print("u_fwd(pwm):");
-    Serial.print(-1*u_fwd/4096);
-    Serial.print(", v_fwd:");
-    Serial.print(v_fwd);
-    Serial.print(", phi_rad:");
-    Serial.print(phi_t);
-    Serial.print(", r_phi:");
-    Serial.print(r_phi);
-    Serial.print(", theta_dot_t:");
-    Serial.print(theta_dot_t);
-    Serial.print(", u_theta_dot_l:");
-    Serial.print(u_theta_dot_l);
-    Serial.println();
+    // Serial.print("u_fwd(pwm):");
+    // Serial.print(-1*u_fwd/4096);
+    // Serial.print(", v_fwd:");
+    // Serial.print(v_fwd);
+    // Serial.print(", phi_rad:");
+    // Serial.print(phi_t);
+    // Serial.print(", r_phi:");
+    // Serial.print(r_phi);
+    // Serial.print(", theta_dot_t:");
+    // Serial.print(theta_dot_t);
+    // Serial.print(", u_theta_dot_l:");
+    // Serial.print(u_theta_dot_l);
+    // Serial.println();
     
 //    Serial.print(", u_l(N):");
 //    Serial.print(controller.u(0));
     //Serial.print(", u_r(N):");
     // Serial.println(controller.u(1));
 
-    u_l = u_fwd + u_theta_dot_l;
-    u_r = u_fwd - u_theta_dot_l;
-        
-    driveMotors(u_l,u_r);
-    
-//    Serial.print("acc.x: ");
-//    Serial.print(acc.x);
-//    Serial.print(", acc.y: ");
-//    Serial.print(acc.y);
-//    Serial.print(", acc.z: ");
-//    Serial.println(acc.z);
+  //   u_l = u_fwd + u_theta_dot_l;
+  //   u_r = u_fwd - u_theta_dot_l;
+  //       
+  //   driveMotors(u_l,u_r);
+  //   
+////     Serial.print("acc.x: ");
+////     Serial.print(acc.x);
+////     Serial.print(", acc.y: ");
+////     Serial.print(acc.y);
+////     Serial.print(", acc.z: ");
+////     Serial.println(acc.z);
 
-//    Serial.print("y1:");
-//    Serial.print(y_act(0));
-//    Serial.print(", y2:");
-//    Serial.print(y_act(1));
-//    Serial.print(", y3:");
-//    Serial.print(y_act(2));
+////     Serial.print("y1:");
+////     Serial.print(y_act(0));
+////     Serial.print(", y2:");
+////     Serial.print(y_act(1));
+////     Serial.print(", y3:");
+////     Serial.print(y_act(2));
 
   }
   if (SerialBT.available()) {
