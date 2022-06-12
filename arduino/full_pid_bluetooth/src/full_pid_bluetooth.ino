@@ -257,7 +257,7 @@ void set_velocity_pid_constants(JsonArray arguments) {
   Kp_w = arguments[0];
   Ki_w = arguments[1];
   Kd_w = arguments[2];
-  char buffer[40];
+  char buffer[100];
   sprintf(buffer, "Setting Kp_w = %6f, Ki_w = %6f, Kd_w = %6f.", Kp_w, Ki_w, Kd_w);
   Serial.println(buffer);
 }
@@ -270,7 +270,7 @@ void set_phi_pid_constants(JsonArray arguments) {
   Kp_phi = arguments[0];
   Ki_phi = arguments[1];
   Kd_phi = arguments[2];
-  char buffer[40];
+  char buffer[100];
   sprintf(buffer, "Setting Kp_phi = %6f, Ki_phi = %6f, Kd_phi = %6f.", Kp_phi, Ki_phi, Kd_phi);
   Serial.println(buffer);
 }
@@ -283,7 +283,7 @@ void set_theta_dot_pid_constants(JsonArray arguments) {
   Kp_theta_dot = arguments[0];
   Ki_theta_dot = arguments[1];
   Kd_theta_dot = arguments[2];
-  char buffer[40];
+  char buffer[100];
   sprintf(buffer, "Setting Kp_theta_dot = %6f, Ki_theta_dot = %6f, Kd_theta_dot = %6f.", Kp_theta_dot, Ki_theta_dot, Kd_theta_dot);
   Serial.println(buffer);
 }
