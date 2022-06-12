@@ -22,8 +22,11 @@ String command = "";
 unsigned long command_index = 0;
 
 /* OPCODES
- *  0 - Set velocity
- *  1 - Set theta dot
+ *  0 - set_velocity(double velocity)
+ *  1 - set_theta_dot(double theta_dot)
+ *  2 - set_velocity_pid_constants(double Kp, double Ki, double Kd)
+ *  3 - set_phi_pid_constants(double Kp, double Ki, double Kd)
+ *  4 - set_theta_dot_pid_constants(double Kp, double Ki, double Kd)
  */
 
 /* TELEMETRY TYPES
@@ -246,6 +249,45 @@ void set_theta_dot(JsonArray arguments) {
   Serial.println(buffer);
 }
 
+void set_velocity_pid_constants(JsonArray arguments) {
+  if (arguments.size() != 3) {
+    Serial.println("Incorrect number of arguments for setting velocity pid constants");
+    return;
+  }
+  Kp_w = arguments[0];
+  Ki_w = arguments[1];
+  Kd_w = arguments[2];
+  char buffer[40];
+  sprintf(buffer, "Setting Kp_w = %6f, Ki_w = %6f, Kd_w = %6f.", Kp_w, Ki_w, Kd_w);
+  Serial.println(buffer);
+}
+
+void set_phi_pid_constants(JsonArray arguments) {
+  if (arguments.size() != 3) {
+    Serial.println("Incorrect number of arguments for setting phi pid constants");
+    return;
+  }
+  Kp_phi = arguments[0];
+  Ki_phi = arguments[1];
+  Kd_phi = arguments[2];
+  char buffer[40];
+  sprintf(buffer, "Setting Kp_phi = %6f, Ki_phi = %6f, Kd_phi = %6f.", Kp_phi, Ki_phi, Kd_phi);
+  Serial.println(buffer);
+}
+
+void set_theta_dot_pid_constants(JsonArray arguments) {
+  if (arguments.size() != 3) {
+    Serial.println("Incorrect number of arguments for setting theta_dot pid constants");
+    return;
+  }
+  Kp_theta_dot = arguments[0];
+  Ki_theta_dot = arguments[1];
+  Kd_theta_dot = arguments[2];
+  char buffer[40];
+  sprintf(buffer, "Setting Kp_theta_dot = %6f, Ki_theta_dot = %6f, Kd_theta_dot = %6f.", Kp_theta_dot, Ki_theta_dot, Kd_theta_dot);
+  Serial.println(buffer);
+}
+
 void processReceivedValue(char b){
   if(b == DELIMITER){
     DynamicJsonDocument doc(1024);
@@ -259,6 +301,15 @@ void processReceivedValue(char b){
           break;
         case 1:
           set_theta_dot(arguments);
+          break;
+        case 2:
+          set_velocity_pid_constants(arguments);
+          break;
+        case 3:
+          set_phi_pid_constants(arguments);
+          break;
+        case 4:
+          set_theta_dot_pid_constants(arguments);
           break;
       }
     } else {
@@ -384,19 +435,19 @@ void loop() {
     angle_PID.Compute();
     theta_dot_PID.Compute();
     
-    Serial.print("u_fwd(pwm):");
-    Serial.print(-1*u_fwd/4096);
-    Serial.print(", v_fwd:");
-    Serial.print(v_fwd);
-    Serial.print(", phi_rad:");
-    Serial.print(phi_t);
-    Serial.print(", r_phi:");
-    Serial.print(r_phi);
-    Serial.print(", theta_dot_t:");
-    Serial.print(theta_dot_t);
-    Serial.print(", u_theta_dot_l:");
-    Serial.print(u_theta_dot_l);
-    Serial.println();
+    // Serial.print("u_fwd(pwm):");
+    // Serial.print(-1*u_fwd/4096);
+    // Serial.print(", v_fwd:");
+    // Serial.print(v_fwd);
+    // Serial.print(", phi_rad:");
+    // Serial.print(phi_t);
+    // Serial.print(", r_phi:");
+    // Serial.print(r_phi);
+    // Serial.print(", theta_dot_t:");
+    // Serial.print(theta_dot_t);
+    // Serial.print(", u_theta_dot_l:");
+    // Serial.print(u_theta_dot_l);
+    // Serial.println();
     
 //    Serial.print(", u_l(N):");
 //    Serial.print(controller.u(0));
