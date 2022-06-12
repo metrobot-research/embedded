@@ -435,19 +435,19 @@ void loop() {
     angle_PID.Compute();
     theta_dot_PID.Compute();
     
-    // Serial.print("u_fwd(pwm):");
-    // Serial.print(-1*u_fwd/4096);
-    // Serial.print(", v_fwd:");
-    // Serial.print(v_fwd);
-    // Serial.print(", phi_rad:");
-    // Serial.print(phi_t);
-    // Serial.print(", r_phi:");
-    // Serial.print(r_phi);
-    // Serial.print(", theta_dot_t:");
-    // Serial.print(theta_dot_t);
-    // Serial.print(", u_theta_dot_l:");
-    // Serial.print(u_theta_dot_l);
-    // Serial.println();
+    Serial.print("u_fwd(pwm):");
+    Serial.print(-1*u_fwd/4096);
+    Serial.print(", v_fwd:");
+    Serial.print(v_fwd);
+    Serial.print(", phi_rad:");
+    Serial.print(phi_t);
+    Serial.print(", r_phi:");
+    Serial.print(r_phi);
+    Serial.print(", theta_dot_t:");
+    Serial.print(theta_dot_t);
+    Serial.print(", u_theta_dot_l:");
+    Serial.print(u_theta_dot_l);
+    Serial.println();
     
 //    Serial.print(", u_l(N):");
 //    Serial.print(controller.u(0));
