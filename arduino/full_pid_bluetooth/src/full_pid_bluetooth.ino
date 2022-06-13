@@ -62,8 +62,8 @@ volatile int countLTotal = 0; //left wheel
 volatile int countR = 0; //right wheel
 volatile int countL = 0; //left wheel
 
-volatile int countRHipTotal = 0; //right hip
-volatile int countLHipTotal = 0; //left hip
+volatile int countRHipTotal = 0; //right hip, encoder 3
+volatile int countLHipTotal = 0; //left hip, encoder 4
 volatile int countRHip = 0; //right hip
 volatile int countLHip = 0; //left hip
 
@@ -144,8 +144,8 @@ void IRAM_ATTR onTime0() {
   // Get each wheel's encoder count:
   countR = -1*encoder1.getCount();
   countL = encoder2.getCount();
-  countRHip = -1*encoder3.getCount();
-  countLHip = encoder4.getCount();
+  countRHip = encoder3.getCount();
+  countLHip = -1*encoder4.getCount();
   
   // 
   countLTotal += countL;
