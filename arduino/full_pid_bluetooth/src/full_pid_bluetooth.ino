@@ -62,8 +62,8 @@ volatile int countLTotal = 0; //left wheel
 volatile int countR = 0; //right wheel
 volatile int countL = 0; //left wheel
 
-volatile int countRHipTotal = 0; //right hip
-volatile int countLHipTotal = 0; //left hip
+volatile int countRHipTotal = 0; //right hip, encoder 3
+volatile int countLHipTotal = 0; //left hip, encoder 4
 volatile int countRHip = 0; //right hip
 volatile int countLHip = 0; //left hip
 
@@ -149,8 +149,8 @@ void IRAM_ATTR onTime0() {
   // Get each wheel's encoder count:
   countR = -1*encoder1.getCount();
   countL = encoder2.getCount();
-  countRHip = -1*encoder3.getCount();
-  countLHip = encoder4.getCount();
+  countRHip = encoder3.getCount();
+  countLHip = -1*encoder4.getCount();
   
   // 
   countLTotal += countL;
@@ -164,6 +164,7 @@ void IRAM_ATTR onTime0() {
   encoder4.clearCount();
     
   deltaT = true; // time has passed
+
   portEXIT_CRITICAL_ISR(&timerMux0);
 }
 
@@ -423,18 +424,18 @@ void setup() {
   pinMode(OCM3,INPUT);
   pinMode(OCM4,INPUT);
 
-  // // Motor 1:
-  // pwm.setPin(0,0,0);
-  // pwm.setPin(1,0,0);
-  // // Motor 2:
-  // pwm.setPWM(2,0,0);
-  // pwm.setPWM(3,0,0);
+  // Motor 1:
+  pwm.setPin(0,0,0);
+  pwm.setPin(1,0,0);
+  // Motor 2:
+  pwm.setPWM(2,0,0);
+  pwm.setPWM(3,0,0);
 
-  // timer0 = timerBegin(0, 80, true);  // timer 0, MWDT clock period = 12.5 ns * TIMGn_Tx_WDT_CLK_PRESCALE -> 12.5 ns * 80 -> 1000 ns = 1 us, countUp
-  // timerAttachInterrupt(timer0, &onTime0, true); // edge (not level) triggered
-  // timerAlarmWrite(timer0, timestep_ms*1000, true); // 10000 * 1 us = 10 ms, autoreload true
-  // timerAlarmEnable(timer0); // enable
-  // delay(2000);
+  timer0 = timerBegin(0, 80, true);  // timer 0, MWDT clock period = 12.5 ns * TIMGn_Tx_WDT_CLK_PRESCALE -> 12.5 ns * 80 -> 1000 ns = 1 us, countUp
+  timerAttachInterrupt(timer0, &onTime0, true); // edge (not level) triggered
+  timerAlarmWrite(timer0, timestep_ms*1000, true); // 10000 * 1 us = 10 ms, autoreload true
+  timerAlarmEnable(timer0); // enable
+  delay(2000);
   
   // init_angle_PID();
   // init_velocity_PID();
