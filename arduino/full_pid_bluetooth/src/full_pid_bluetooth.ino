@@ -74,6 +74,10 @@ double Ki_w = 0.3;
 double Kd_w = 0.002;
 #define VELOCITY_LIMIT 0.1
 
+double r_xdot = 0; // commanded wheel speed, m/s
+double xdot_t = 0; // wheel velocity at a given time, avg of left and right
+double e_xdot = 0; // error in wheel speed
+
 // Controller constants for phi motor speed (loop one)
 double Kp_phi = 12500;
 double Ki_phi = 145000;
@@ -86,24 +90,25 @@ double phi_t;     // angle phi as calcd from gyro
 double phi_t_acc;     // angle phi as calcd from acc'mtrr_
 double e_phi = 0; // angle error
 
-double r_xdot = 0; // commanded wheel speed, m/s
-double xdot_t = 0; // wheel velocity at a given time, avg of left and right
-double e_xdot = 0; // error in wheel speed
+double Kp_theta_dot = 200;
+double Ki_theta_dot = 150;
+double Kd_theta_dot = 5;
+#define THETA_DOT_LIMIT 4096
 
 // Theta_dot Controller
 double u_theta_dot_l = 0; // used in negative for u_theta_r
 double r_theta_dot = 0; //commanded theta_dot, initialized @0 at startup
 double theta_dot_t = 0; //theta at a given time, initialized @0
 
-double Kp_theta_dot = 200;
-double Ki_theta_dot = 150;
-double Kd_theta_dot = 5;
-#define THETA_DOT_LIMIT 4096
-
-double Kp_hip = 200;
-double Ki_hip = 150;
-double Kd_hip = 5;
+double Kp_hip_l = 200;
+double Ki_hip_l = 150;
+double Kd_hip_l = 5;
 #define HIP_LIMIT 4096
+
+// Theta_dot Controller
+double u_hip_l = 0; 
+double r_hip_l = 0; //commanded theta_dot, initialized @0 at startup
+double hip_l_t = 0; //theta at a given time, initialized @0
 
 // Initializing hardware timer
 volatile bool deltaT = false;     // check timer interrupt
@@ -136,7 +141,7 @@ Vector3f acc_n_e;
 PID velocity_PID(&v_fwd,&r_phi_ph,&r_v,Kp_w,Ki_w,Kd_w, DIRECT);
 PID angle_PID(&phi_t,&u_fwd,&r_phi,Kp_phi,Ki_phi,Kd_phi, DIRECT);
 PID theta_dot_PID(&theta_dot_t,&u_theta_dot_l,&r_theta_dot,Kp_theta_dot,Ki_theta_dot,Kd_theta_dot, DIRECT);
-PID left_hip_PID(&theta_dot_t,&u_theta_dot_l,&r_theta_dot,Kp_theta_dot,Ki_theta_dot,Kd_theta_dot, DIRECT);
+PID left_hip_PID(&hip_l_t,&u_hip_l,&r_hip_l,Kp_hip_l,Ki_hip_l,Kd_hip_l, DIRECT); // hip_l_t
 
 void IRAM_ATTR onTime0() {
   portENTER_CRITICAL_ISR(&timerMux0);
@@ -312,7 +317,7 @@ void set_theta_dot_pid_constants(JsonArray arguments) {
 }
 
 void processReceivedValue(char b){
-  if(b == DELIMITER){
+  if (b == DELIMITER){
     DynamicJsonDocument doc(1024);
     deserializeJson(doc, command);
     int opcode = doc["command"];
