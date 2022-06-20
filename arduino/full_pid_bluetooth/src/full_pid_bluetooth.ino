@@ -208,7 +208,7 @@ void driveMotors(float u_l, float u_r){
     }
   }
 
-  void driveHipMotors(float u_hip_l, float u_hip_r) {
+void driveHipMotors(float u_hip_l, float u_hip_r) {
     // Setting Motor speeds:
     if (u_hip_l > MAX_PWM){
       u_hip_l = MAX_PWM;
@@ -243,7 +243,7 @@ void driveMotors(float u_l, float u_r){
       pwm.setPin(6,-u_hip_r,0);
       pwm.setPin(7,0,0);
     }
-  }
+}
 
 void getAngle(){
   // Synthesize and filter Gyro and Accelerometer readings to get accurate angle measurement
@@ -468,14 +468,14 @@ void setup() {
   pwm.setPin(0,0,0);
   pwm.setPin(1,0,0);
   // Motor 2:
-  pwm.setPWM(2,0,0);
-  pwm.setPWM(3,0,0);
+  pwm.setPin(2,0,0);
+  pwm.setPin(3,0,0);
   // Motor 3:
-  pwm.setPWM(4,0,0);
-  pwm.setPWM(5,0,0);
+  pwm.setPin(4,0,0);
+  pwm.setPin(5,0,0);
   // Motor 4:
-  pwm.setPWM(6,0,0);
-  pwm.setPWM(7,0,0);
+  pwm.setPin(6,0,0);
+  pwm.setPin(7,0,0);
 
   timer0 = timerBegin(0, 80, true);  // timer 0, MWDT clock period = 12.5 ns * TIMGn_Tx_WDT_CLK_PRESCALE -> 12.5 ns * 80 -> 1000 ns = 1 us, countUp
   timerAttachInterrupt(timer0, &onTime0, true); // edge (not level) triggered
@@ -495,19 +495,18 @@ void loop() {
     deltaT = false;
     portEXIT_CRITICAL(&timerMux0);
 
-    Serial.print("ocm1: ");
-    Serial.print(analogRead(OCM1));
-    Serial.print("ocm2: ");
-    Serial.print(analogRead(OCM2));
-    Serial.print("ocm3: ");
-    Serial.print(analogRead(OCM3));
-    Serial.print("ocm4: ");
-    Serial.print(analogRead(OCM4));
+//    Serial.print("ocm1: ");
+//    Serial.print(analogRead(OCM1));
+//    Serial.print("ocm2: ");
+//    Serial.print(analogRead(OCM2));
+//    Serial.print("ocm3: ");
+//    Serial.print(analogRead(OCM3));
+//    Serial.print("ocm4: ");
+//    Serial.print(analogRead(OCM4));
     Serial.print("encoder3: ");
     Serial.print(countRHipTotal);
-    Serial.print("encoder4: ");
+    Serial.print(", encoder4: ");
     Serial.print(countLHipTotal);
-    Serial.println();
 
     // Calculate Hip Angles from Encoder Counts
     
@@ -534,19 +533,19 @@ void loop() {
     angle_PID.Compute();
     theta_dot_PID.Compute();
     
-    Serial.print("u_fwd(pwm):");
-    Serial.print(-1*u_fwd/4096);
-    Serial.print(", v_fwd:");
-    Serial.print(v_fwd);
-    Serial.print(", phi_rad:");
-    Serial.print(phi_t);
-    Serial.print(", r_phi:");
-    Serial.print(r_phi);
-    Serial.print(", theta_dot_t:");
-    Serial.print(theta_dot_t);
-    Serial.print(", u_theta_dot_l:");
-    Serial.print(u_theta_dot_l);
-    Serial.println();
+     Serial.print("u_fwd(pwm):");
+     Serial.print(-1*u_fwd/4096);
+     Serial.print(", v_fwd:");
+     Serial.print(v_fwd);
+     Serial.print(", phi_rad:");
+     Serial.print(phi_t);
+     Serial.print(", r_phi:");
+     Serial.print(r_phi);
+     Serial.print(", theta_dot_t:");
+     Serial.print(theta_dot_t);
+     Serial.print(", u_theta_dot_l:");
+     Serial.print(u_theta_dot_l);
+     Serial.println();
     
 //    Serial.print(", u_l(N):");
 //    Serial.print(controller.u(0));
@@ -556,8 +555,9 @@ void loop() {
      u_l = u_fwd + u_theta_dot_l;
      u_r = u_fwd - u_theta_dot_l;
          
-     // driveMotors(u_l,u_r);
-     driveHipMotors(200, 0);
+     //driveMotors(u_l,u_r);
+     driveHipMotors(0,-4096); // Second input is left motor, negative is toward body. 1st input right motor, input unknown
+     Serial.print("Motors Commanded");
  
      
 //     Serial.print("acc.x: ");
