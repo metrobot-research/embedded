@@ -147,6 +147,10 @@ PID angle_PID(&phi_t,&u_fwd,&r_phi,Kp_phi,Ki_phi,Kd_phi, DIRECT);
 PID theta_dot_PID(&theta_dot_t,&u_theta_dot_l,&r_theta_dot,Kp_theta_dot,Ki_theta_dot,Kd_theta_dot, DIRECT);
 PID left_hip_PID(&hip_l_t,&u_hip_l,&r_hip_l,Kp_hip_l,Ki_hip_l,Kd_hip_l, DIRECT); // hip_l_t measured in counts
 
+double getTime() {
+  return (double) timestep_ms * timesteps_passed / 1000.0;
+}
+
 void IRAM_ATTR onTime0() {
   portENTER_CRITICAL_ISR(&timerMux0);
   // Code to be called when timer is activated:
@@ -495,18 +499,19 @@ void loop() {
     deltaT = false;
     portEXIT_CRITICAL(&timerMux0);
 
-//    Serial.print("ocm1: ");
-//    Serial.print(analogRead(OCM1));
-//    Serial.print("ocm2: ");
-//    Serial.print(analogRead(OCM2));
-//    Serial.print("ocm3: ");
-//    Serial.print(analogRead(OCM3));
-//    Serial.print("ocm4: ");
-//    Serial.print(analogRead(OCM4));
+    Serial.print("ocm1: ");
+    Serial.print(analogRead(OCM1));
+    Serial.print("ocm2: ");
+    Serial.print(analogRead(OCM2));
+    Serial.print("ocm3: ");
+    Serial.print(analogRead(OCM3));
+    Serial.print("ocm4: ");
+    Serial.print(analogRead(OCM4));
     Serial.print("encoder3: ");
     Serial.print(countRHipTotal);
     Serial.print(", encoder4: ");
     Serial.print(countLHipTotal);
+    Serial.println();
 
     // Calculate Hip Angles from Encoder Counts
     
@@ -533,19 +538,19 @@ void loop() {
     angle_PID.Compute();
     theta_dot_PID.Compute();
     
-     Serial.print("u_fwd(pwm):");
-     Serial.print(-1*u_fwd/4096);
-     Serial.print(", v_fwd:");
-     Serial.print(v_fwd);
-     Serial.print(", phi_rad:");
-     Serial.print(phi_t);
-     Serial.print(", r_phi:");
-     Serial.print(r_phi);
-     Serial.print(", theta_dot_t:");
-     Serial.print(theta_dot_t);
-     Serial.print(", u_theta_dot_l:");
-     Serial.print(u_theta_dot_l);
-     Serial.println();
+    // Serial.print("u_fwd(pwm):");
+    // Serial.print(-1*u_fwd/4096);
+    // Serial.print(", v_fwd:");
+    // Serial.print(v_fwd);
+    // Serial.print(", phi_rad:");
+    // Serial.print(phi_t);
+    // Serial.print(", r_phi:");
+    // Serial.print(r_phi);
+    // Serial.print(", theta_dot_t:");
+    // Serial.print(theta_dot_t);
+    // Serial.print(", u_theta_dot_l:");
+    // Serial.print(u_theta_dot_l);
+    // Serial.println();
     
 //    Serial.print(", u_l(N):");
 //    Serial.print(controller.u(0));
@@ -555,9 +560,14 @@ void loop() {
      u_l = u_fwd + u_theta_dot_l;
      u_r = u_fwd - u_theta_dot_l;
          
-     //driveMotors(u_l,u_r);
-     driveHipMotors(0,-4096); // Second input is left motor, negative is toward body. 1st input right motor, input unknown
-     Serial.print("Motors Commanded");
+     if (getTime() < 5) {
+      //driveMotors(u_l,u_r);
+      driveHipMotors(0,-4096); // Second input is left motor, negative is toward body. 1st input right motor, input unknown
+      Serial.print("Motors on.");
+     } else {
+      driveHipMotors(0,0); // Second input is left motor, negative is toward body. 1st input right motor, input unknown
+      Serial.print("Motors turned off.");
+    }
  
      
 //     Serial.print("acc.x: ");
