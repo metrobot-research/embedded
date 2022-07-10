@@ -43,6 +43,7 @@ unsigned long command_index = 0;
 #define OCM4 35
 #define WIRE_PORT Wire 
 #define AD0_VAL 1      // The value of the last bit of the I2C address.                
+#define OCM_THRESHOLD 2400
 
 using namespace Eigen;
 using Eigen::MatrixXd;
@@ -147,6 +148,9 @@ PID angle_PID(&phi_t,&u_fwd,&r_phi,Kp_phi,Ki_phi,Kd_phi, DIRECT);
 PID theta_dot_PID(&theta_dot_t,&u_theta_dot_l,&r_theta_dot,Kp_theta_dot,Ki_theta_dot,Kd_theta_dot, DIRECT);
 PID left_hip_PID(&hip_l_t,&u_hip_l,&r_hip_l,Kp_hip_l,Ki_hip_l,Kd_hip_l, DIRECT); // hip_l_t measured in counts
 
+bool going_up = false;
+double finish_time = -1;
+
 double getTime() {
   return (double) timestep_ms * timesteps_passed / 1000.0;
 }
@@ -172,6 +176,7 @@ void IRAM_ATTR onTime0() {
   encoder4.clearCount();
     
   deltaT = true; // time has passed
+  timesteps_passed++;
   portEXIT_CRITICAL_ISR(&timerMux0);
 }
 
@@ -492,6 +497,28 @@ void setup() {
   init_theta_dot_PID();
 }
 
+void squats() {
+  int leftval;
+  int rightval;
+  leftval = analogRead(OCM4);
+  rightval = analogRead(OCM3);
+
+  if (getTime() > finish_time + 3 && abs(leftval) < OCM_THRESHOLD) {
+    finish_time = -1;
+    if (going_up) {
+      driveHipMotors(0, 4096);
+      
+    } else {
+      driveHipMotors(0, -4096);
+    }
+  } else if (finish_time == - 1) {
+    going_up = !going_up;
+    driveHipMotors(0, 0);
+    finish_time = getTime();
+  }
+
+}
+
 void loop() {
   if(deltaT){
     // ensuring reset isn't skipped:
@@ -499,17 +526,17 @@ void loop() {
     deltaT = false;
     portEXIT_CRITICAL(&timerMux0);
 
-    Serial.print("ocm1: ");
-    Serial.print(analogRead(OCM1));
-    Serial.print("ocm2: ");
-    Serial.print(analogRead(OCM2));
-    Serial.print("ocm3: ");
+    // Serial.print("ocm1: ");
+    // Serial.print(analogRead(OCM1));
+    // Serial.print(", ocm2: ");
+    // Serial.print(analogRead(OCM2));
+    Serial.print(", ocm_Right: ");
     Serial.print(analogRead(OCM3));
-    Serial.print("ocm4: ");
+    Serial.print(", ocm_Left: ");
     Serial.print(analogRead(OCM4));
-    Serial.print("encoder3: ");
+    Serial.print(", encoderRH: ");
     Serial.print(countRHipTotal);
-    Serial.print(", encoder4: ");
+    Serial.print(", encoderLH: ");
     Serial.print(countLHipTotal);
     Serial.println();
 
@@ -559,10 +586,10 @@ void loop() {
 
      u_l = u_fwd + u_theta_dot_l;
      u_r = u_fwd - u_theta_dot_l;
-         
-     if (getTime() < 5) {
-      //driveMotors(u_l,u_r);
-      driveHipMotors(0,-4096); // Second input is left motor, negative is toward body. 1st input right motor, input unknown
+
+     if (getTime() < 18) {
+      squats();
+      // Second input is left motor, negative is toward body. 1st input right motor, input unknown
       Serial.print("Motors on.");
      } else {
       driveHipMotors(0,0); // Second input is left motor, negative is toward body. 1st input right motor, input unknown
