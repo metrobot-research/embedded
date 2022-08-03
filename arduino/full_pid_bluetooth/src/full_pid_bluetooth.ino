@@ -50,9 +50,10 @@ using Eigen::MatrixXd;
 // Time constants
 #define TIMER_INTERVAL_MS 25 // Interval between timer interrupts
 
-// Bluetooth controller definitions
+// Serial controller definitions
 BluetoothSerial SerialBT;
-String command = "";
+String command_BT = "";
+String command_serial = "";
 
 // Encoder definitions
 ESP32Encoder encoder_wheel_right; // Right wheel encoder
@@ -304,7 +305,7 @@ void set_turning_velocity_pid_constants(JsonArray arguments)
 // 2 - set_velocity_pid_constants(double Kp, double Ki, double Kd)
 // 3 - set_phi_pid_constants(double Kp, double Ki, double Kd)
 // 4 - set_theta_dot_pid_constants(double Kp, double Ki, double Kd)
-void processReceivedValue(char b)
+void processReceivedValue(char b, String &command)
 {
   if (b == DELIMITER)
   {
@@ -462,16 +463,22 @@ void loop()
     Serial.print(", Motor turning velocity input:");
     Serial.print(u_theta_dot);
     Serial.println();
-
+    
     // Drive motors using output from tilt angle and turning velocity PID loops
     driveMotors(u_phi + u_theta_dot, u_phi - u_theta_dot);
   }
 
-  // Read in and process commands from Bluetooth controller
+  // Read in and process commands from Bluetooth or serial controller
   if (SerialBT.available())
   {
-    char c = SerialBT.read();
-    Serial.print(c);
-    processReceivedValue(c);
+    char b = SerialBT.read();
+    SerialBT.print(b);
+    processReceivedValue(b, command_BT);
+  } 
+  else if (Serial.available())
+  {
+    char b = Serial.read();
+    Serial.print(b);
+    processReceivedValue(b, command_serial);
   }
 }
