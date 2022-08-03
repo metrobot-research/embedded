@@ -50,11 +50,9 @@ using Eigen::MatrixXd;
 // Time constants
 #define TIMER_INTERVAL_MS 25 // Interval between timer interrupts
 
-// Bluetooth controller definitions
+// Serial controller definitions
 BluetoothSerial SerialBT;
 String command_BT = "";
-
-// Serial controller definitions
 String command_serial = "";
 
 // Encoder definitions
@@ -309,7 +307,6 @@ void set_turning_velocity_pid_constants(JsonArray arguments)
 // 4 - set_theta_dot_pid_constants(double Kp, double Ki, double Kd)
 void processReceivedValue(char b, String &command)
 {
-  
   if (b == DELIMITER)
   {
     DynamicJsonDocument doc(1024);
@@ -354,7 +351,6 @@ void processReceivedValue(char b, String &command)
 void setup()
 {
   Serial.begin(115200);
-  
   SerialBT.begin("ESP32");
 
   // Wait until serial port initialized before progressing
@@ -454,7 +450,6 @@ void loop()
     turning_velocity_PID.Compute();
 
     // Print telemetry to serial
-    
     Serial.print("Motor forward input (PWM):");
     Serial.print(-1 * u_phi / 4096);
     Serial.print(", Current forward velocity (m/s):");
@@ -469,7 +464,6 @@ void loop()
     Serial.print(u_theta_dot);
     Serial.println();
     
-
     // Drive motors using output from tilt angle and turning velocity PID loops
     driveMotors(u_phi + u_theta_dot, u_phi - u_theta_dot);
   }

@@ -176,6 +176,9 @@ async def run_controller(writer, input_type):
                         kp_w = KP_W_DEFAULT
                         ki_w = KI_W_DEFAULT
                         kd_w = KD_W_DEFAULT
+                        vel_kp.set_text(str(kp_w))
+                        vel_ki.set_text(str(ki_w))
+                        vel_kd.set_text(str(kd_w))
                         writer.write(b'{"command":2,"args":[%6f, %6f, %6f]}\n' % (kp_w, ki_w, kd_w))
                     if event.ui_element == phi_save:
                         kp_phi = float(phi_kp.get_text())
@@ -186,6 +189,9 @@ async def run_controller(writer, input_type):
                         kp_phi = KP_PHI_DEFAULT
                         ki_phi = KI_PHI_DEFAULT
                         kd_phi = KD_PHI_DEFAULT
+                        phi_kp.set_text(str(kp_phi))
+                        phi_ki.set_text(str(ki_phi))
+                        phi_kd.set_text(str(kd_phi))
                         writer.write(b'{"command":3,"args":[%6f, %6f, %6f]}\n' % (kp_phi, ki_phi, kd_phi))
                     if event.ui_element == theta_dot_save:
                         kp_theta_dot = float(theta_dot_kp.get_text())
@@ -196,6 +202,9 @@ async def run_controller(writer, input_type):
                         kp_theta_dot = KP_THETA_DOT_DEFAULT
                         ki_theta_dot = KI_THETA_DOT_DEFAULT
                         kd_theta_dot = KD_THETA_DOT_DEFAULT
+                        theta_dot_kp.set_text(str(kp_theta_dot))
+                        theta_dot_ki.set_text(str(ki_theta_dot))
+                        theta_dot_kd.set_text(str(kd_theta_dot))
                         writer.write(b'{"command":4,"args":[%6f, %6f, %6f]}\n' % (kp_theta_dot, ki_theta_dot, kd_theta_dot))
             except Exception as e:
                 print(f"UI Error: {e}")
