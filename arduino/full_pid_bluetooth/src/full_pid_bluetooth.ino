@@ -348,6 +348,30 @@ void processReceivedValue(char b, String &command)
   return;
 }
 
+
+void publishSensorValues()
+// Send sensor values to the Jetson over UART using Serial Library
+  
+/* Inputs
+ Acceleration (from the IMU: inertial measurement unit)
+ - acc x,y,z
+ Gyroscope
+ - gyr x,y,z
+ State
+ - Filtered  Phi_actual
+ encoder values:
+ - Wheel speed (LW,RW)
+ - Hip Angle (LH,RH)
+ - Neck Angle (N)
+ Servo values:
+ 2 values
+ - Head Angle
+ - Grasper Angle
+
+ 13 total
+*/
+
+
 void setup()
 {
   Serial.begin(115200);
