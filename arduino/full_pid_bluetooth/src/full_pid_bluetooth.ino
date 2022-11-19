@@ -32,6 +32,12 @@ using Eigen::MatrixXd;
 #define HIP_MOTOR_LEFT_B 7    // Left hip motor pin B
 #define HIP_MOTOR_RIGHT_A 4   // Right hip motor pin A
 #define HIP_MOTOR_RIGHT_B 5   // Right hip motor pin B
+#define NECK_MOTOR_A 8        // Neck Angle Motor pin A
+#define NECK_MOTOR_B 9        // Neck Angle Motor pin B
+#define NECK_SERVO 12         // Servo_1 on PCB
+#define GRASPER_SERVO 13      // Servo_2 on PCB
+//#define RXD_2 16      //probably unneeded
+//#define TXD_2 17      //probably unneeded
 
 // Serialization constants
 #define DELIMITER '\n'
@@ -54,6 +60,7 @@ using Eigen::MatrixXd;
 BluetoothSerial SerialBT;
 String command_BT = "";
 String command_serial = "";
+String command_2 = "";
 
 // Encoder definitions
 ESP32Encoder encoder_wheel_right; // Right wheel encoder
@@ -229,7 +236,7 @@ void set_velocity(JsonArray arguments)
   r_xdot = velocity_input * MAX_VELOCITY;
   char buffer[40];
   sprintf(buffer, "Setting velocity: %6f.", r_xdot);
-  Serial.println(buffer);
+  //Serial.println(buffer);
 }
 
 // Set turning velocity setpoint
@@ -249,7 +256,7 @@ void set_turning_velocity(JsonArray arguments)
   r_theta_dot = theta_dot_input * MAX_PWM;
   char buffer[40];
   sprintf(buffer, "Setting theta_dot: %6f.", r_theta_dot);
-  Serial.println(buffer);
+  //Serial.println(buffer);
 }
 
 void set_velocity_pid_constants(JsonArray arguments)
@@ -262,6 +269,7 @@ void set_velocity_pid_constants(JsonArray arguments)
   Kp_xdot = arguments[0];
   Ki_xdot = arguments[1];
   Kd_xdot = arguments[2];
+  velocity_PID.SetTunings(Kp_xdot,Ki_xdot,Kd_xdot);
   char buffer[100];
   sprintf(buffer, "Setting Kp_xdot = %6f, Ki_xdot = %6f, Kd_xdot = %6f.", Kp_xdot, Ki_xdot, Kd_xdot);
   Serial.println(buffer);
@@ -277,6 +285,7 @@ void set_angle_pid_constants(JsonArray arguments)
   Kp_phi = arguments[0];
   Ki_phi = arguments[1];
   Kd_phi = arguments[2];
+  angle_PID.SetTunings(Kp_phi,Ki_phi,Kd_phi);
   char buffer[100];
   sprintf(buffer, "Setting Kp_phi = %6f, Ki_phi = %6f, Kd_phi = %6f.", Kp_phi, Ki_phi, Kd_phi);
   Serial.println(buffer);
@@ -293,6 +302,8 @@ void set_turning_velocity_pid_constants(JsonArray arguments)
   Ki_theta_dot = arguments[1];
   Kd_theta_dot = arguments[2];
   char buffer[100];
+  turning_velocity_PID.SetTunings(Kp_xdot,Ki_xdot,Kd_xdot);
+
   sprintf(buffer, "Setting Kp_theta_dot = %6f, Ki_theta_dot = %6f, Kd_theta_dot = %6f.", Kp_theta_dot, Ki_theta_dot, Kd_theta_dot);
   Serial.println(buffer);
 }
@@ -305,6 +316,7 @@ void set_turning_velocity_pid_constants(JsonArray arguments)
 // 2 - set_velocity_pid_constants(double Kp, double Ki, double Kd)
 // 3 - set_phi_pid_constants(double Kp, double Ki, double Kd)
 // 4 - set_theta_dot_pid_constants(double Kp, double Ki, double Kd)
+
 void processReceivedValue(char b, String &command)
 {
   if (b == DELIMITER)
@@ -347,9 +359,25 @@ void processReceivedValue(char b, String &command)
 
   return;
 }
+void processReceivedJetsonValue(char b, String &command_2)
+{
+  if (b == DELIMITER)
+  {
+    // Do what we want with the data. In this case, print it. 
+    Serial.println("Message "+command_2 +" received on ESP32");
+    // Reset the delimiter for the next message to receive.
+    command_2="";
+  }
+  else
+  {
+    command_2.concat(b);
+  }
 
+  return;
+}
 
 void publishSensorValues()
+{
 // Send sensor values to the Jetson over UART using Serial Library
   
 /* Inputs
@@ -369,16 +397,24 @@ void publishSensorValues()
  - Grasper Angle
 
  13 total
+
+ Outputs: 
+ Publish over Serial to ROS node listener
 */
+uint8_t buf[2] = {'a', 'b'};
+Serial2.write(buf, 2);
 
+}
 
-void setup()
-{
+void setup(){
   Serial.begin(115200);
   SerialBT.begin("ESP32");
+  Serial2.begin(115200);
 
   // Wait until serial port initialized before progressing
   while (!Serial)
+    ;
+  while (!Serial2)
     ;
 
   // I2C wire initialization
@@ -474,22 +510,22 @@ void loop()
     turning_velocity_PID.Compute();
 
     // Print telemetry to serial
-    Serial.print("Motor forward input (PWM):");
-    Serial.print(-1 * u_phi / 4096);
-    Serial.print(", Current forward velocity (m/s):");
-    Serial.print(xdot);
-    Serial.print(", Current tilt angle (rad):");
-    Serial.print(phi);
-    Serial.print(", Tilt angle set point (rad):");
-    Serial.print(r_phi);
-    Serial.print(", Current turning velocity (rad/s):");
-    Serial.print(theta_dot);
-    Serial.print(", Motor turning velocity input:");
-    Serial.print(u_theta_dot);
-    Serial.println();
+    // Serial.print("Motor forward input (PWM):");
+    // Serial.print(-1 * u_phi / 4096);
+    // Serial.print(", Current forward velocity (m/s):");
+    // Serial.print(xdot);
+    // Serial.print(", Current tilt angle (rad):");
+    // Serial.print(phi);
+    // Serial.print(", Tilt angle set point (rad):");
+    // Serial.print(r_phi);
+    // Serial.print(", Current turning velocity (rad/s):");
+    // Serial.print(theta_dot);
+    // Serial.print(", Motor turning velocity input:");
+    // Serial.print(u_theta_dot);
+    // Serial.println();
     
     // Drive motors using output from tilt angle and turning velocity PID loops
-    driveMotors(u_phi + u_theta_dot, u_phi - u_theta_dot);
+    // driveMotors(u_phi + u_theta_dot, u_phi - u_theta_dot);
   }
 
   // Read in and process commands from Bluetooth or serial controller
@@ -504,5 +540,11 @@ void loop()
     char b = Serial.read();
     Serial.print(b);
     processReceivedValue(b, command_serial);
+  }
+  else if (Serial2.available())
+  {
+    char b = Serial2.read();
+    //Serial.print(b);
+    processReceivedJetsonValue(b, command_2);
   }
 }
