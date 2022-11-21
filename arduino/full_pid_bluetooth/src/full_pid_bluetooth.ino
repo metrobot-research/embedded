@@ -121,8 +121,12 @@ Vector3f ACC_VERTICAL_VEC; // Vertical vector from accelerometer readings while 
 Vector3f acc_vec;          // Current acceleration vector from accelerometer
 Vector3f acc_normal_vec;   // Normal vector to current acceleration and vertical acceleration vectors
 
-// PWM definitions
-Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
+// dc_pwm definitions
+Adafruit_PWMServoDriver dc_pwm = Adafruit_PWMServoDriver();
+Adafruit_PWMServoDriver servo_pwm = Adafruit_PWMServoDriver();
+int pulse_length_grasper = 0;
+int grasper_pulse_max = 300; // absolute max servo will respond to is [70,500]
+int grasper_pulse_min = 70;
 
 // Interrupt handler that runs every TIMER_INTERVAL_MS ms
 void IRAM_ATTR timerInterruptHandler()
@@ -143,7 +147,7 @@ void IRAM_ATTR timerInterruptHandler()
   portEXIT_CRITICAL_ISR(&timerMux0);
 }
 
-// Drive motors at desired PWM
+// Drive motors at desired dc_pwm
 void driveMotors(float u_l, float u_r)
 {
   // Constrain motor input
@@ -154,27 +158,32 @@ void driveMotors(float u_l, float u_r)
 
   if (u_l >= 0)
   {
-    pwm.setPin(WHEEL_MOTOR_LEFT_A, u_l, 0);
-    pwm.setPin(WHEEL_MOTOR_LEFT_B, 0, 0);
+    dc_pwm.setPin(WHEEL_MOTOR_LEFT_A, u_l, 0);
+    dc_pwm.setPin(WHEEL_MOTOR_LEFT_B, 0, 0);
   }
   else
   {
-    pwm.setPin(WHEEL_MOTOR_LEFT_A, 0, 0);
-    pwm.setPin(WHEEL_MOTOR_LEFT_B, -u_l, 0);
+    dc_pwm.setPin(WHEEL_MOTOR_LEFT_A, 0, 0);
+    dc_pwm.setPin(WHEEL_MOTOR_LEFT_B, -u_l, 0);
   }
 
   if (u_r >= 0)
   {
-    pwm.setPin(WHEEL_MOTOR_RIGHT_A, 0, 0);
-    pwm.setPin(WHEEL_MOTOR_RIGHT_B, u_r, 0);
+    dc_pwm.setPin(WHEEL_MOTOR_RIGHT_A, 0, 0);
+    dc_pwm.setPin(WHEEL_MOTOR_RIGHT_B, u_r, 0);
   }
   else
   {
-    pwm.setPin(WHEEL_MOTOR_RIGHT_A, -u_r, 0);
-    pwm.setPin(WHEEL_MOTOR_RIGHT_B, 0, 0);
+    dc_pwm.setPin(WHEEL_MOTOR_RIGHT_A, -u_r, 0);
+    dc_pwm.setPin(WHEEL_MOTOR_RIGHT_B, 0, 0);
   }
 }
 
+void driveGrasper(float u_in)
+{
+  // Takes in u_in, proportion between 0 and 1 of how closed the servo should be. 0 is open and 1 is fully closed. Can overactuate open.
+  pulse_length_grasper = grasper_pulse_min+int(u_in*(grasper_pulse_max-grasper_pulse_min));
+}
 // Synthesize and filter gyro and accelerometer readings to get accurate angle measurements
 void getAngles()
 {
@@ -372,7 +381,7 @@ void processReceivedJetsonValue(char b, String &command_2)
   {
     command_2.concat(b);
   }
-
+  Serial2.print("Message sent from ESP32|");
   return;
 }
 
@@ -461,21 +470,28 @@ void setup(){
   encoder_wheel_right.clearCount();
   encoder_wheel_left.clearCount();
 
-  pwm.begin();
-  pwm.setOscillatorFrequency(27000000);
-  pwm.setPWMFreq(440);
+  dc_pwm.begin();
+  dc_pwm.setOscillatorFrequency(27000000);
+  dc_pwm.setPWMFreq(440);
+
+  servo_pwm.begin();
+  servo_pwm.setOscillatorFrequency(27000000);
+  servo_pwm.setPWMFreq(50);
 
   pinMode(OCM_1, INPUT);
   pinMode(OCM_2, INPUT);
   pinMode(OCM_HIP_LEFT, INPUT);
   pinMode(OCM_HIP_RIGHT, INPUT);
 
-  // Motor 1:
-  pwm.setPin(0, 0, 0);
-  pwm.setPin(1, 0, 0);
-  // Motor 2:
-  pwm.setPWM(2, 0, 0);
-  pwm.setPWM(3, 0, 0);
+  // Motor 1 (Left):
+  dc_pwm.setPin(WHEEL_MOTOR_LEFT_A, 0, 0);
+  dc_pwm.setPin(WHEEL_MOTOR_LEFT_B, 0, 0);
+  // Motor 2 (Right):
+  dc_pwm.setPin(WHEEL_MOTOR_RIGHT_A, 0, 0);
+  dc_pwm.setPin(WHEEL_MOTOR_RIGHT_B, 0, 0);
+
+  // Grasper (SRV_2)
+  servo_pwm.setPWM(GRASPER_SERVO, 0, 0);
 
   timer0 = timerBegin(0, 80, true);                           // timer 0, MWDT clock period = 12.5 ns * TIMGn_Tx_WDT_CLK_PRESCALE -> 12.5 ns * 80 -> 1000 ns = 1 us, countUp
   timerAttachInterrupt(timer0, &timerInterruptHandler, true); // edge (not level) triggered
@@ -510,7 +526,7 @@ void loop()
     turning_velocity_PID.Compute();
 
     // Print telemetry to serial
-    // Serial.print("Motor forward input (PWM):");
+    // Serial.print("Motor forward input (dc_pwm):");
     // Serial.print(-1 * u_phi / 4096);
     // Serial.print(", Current forward velocity (m/s):");
     // Serial.print(xdot);
@@ -525,7 +541,9 @@ void loop()
     // Serial.println();
     
     // Drive motors using output from tilt angle and turning velocity PID loops
-    // driveMotors(u_phi + u_theta_dot, u_phi - u_theta_dot);
+    driveMotors(u_phi + u_theta_dot, u_phi - u_theta_dot);
+    driveGrasper(0);
+
   }
 
   // Read in and process commands from Bluetooth or serial controller
@@ -544,7 +562,6 @@ void loop()
   else if (Serial2.available())
   {
     char b = Serial2.read();
-    //Serial.print(b);
     processReceivedJetsonValue(b, command_2);
   }
 }
