@@ -18,7 +18,6 @@ def main():
 
     # clucking 
 
-
     # squatting
     # idk @ meche people TODO 
 
@@ -37,7 +36,6 @@ def main():
     # while not found, perform 360 scan
         # to perform 360 scan, run CV algo as she slowly rotates in a circle
             # ie camera node returns ball position if that's found, otherwise returns null
-            # TODO: check with Warren how wide her field of vision is 
             # TODO: (check with Warren about best strat for this) check how stably she rotates (bc not perfect circle), maybe have her incrementally pause as she moves into each configuration
                 # staring 
                 # ie pauses at first scan, rotates 15 degrees clockwise, pauses again and scans, moves 15 degrees clockwise, pauses and scans, ...
@@ -86,7 +84,7 @@ def main():
         # keep running path planning algo as this is happening, until camera cannot keep track of the ball
         # ^ or maybe run path planning algo of up until 
     # robot drives to ball
-    # robot clutches ball, rises back up
+    # robot clutches ball, rises back up 
 
     
     # ------- GRASPING — PATH PLANNING #2 -------
