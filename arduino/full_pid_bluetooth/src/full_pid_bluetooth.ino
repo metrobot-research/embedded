@@ -56,6 +56,9 @@ using Eigen::MatrixXd;
 // Time constants
 #define TIMER_INTERVAL_MS 25 // Interval between timer interrupts
 
+// Robot state declarator
+volatile bool currently_enabled= false;
+
 // Serial controller definitions
 BluetoothSerial SerialBT;
 String command_BT = "";
@@ -68,10 +71,17 @@ ESP32Encoder encoder_wheel_left;  // Left wheel encoder
 ESP32Encoder encoder_hip_right;   // Right hip motor encoder
 ESP32Encoder encoder_hip_left;    // Left hip motor encoder
 
+// Wheel Encoder Counts:
 volatile int count_r_total = 0; // Right wheel total encoder count
 volatile int count_l_total = 0; // Left wheel total encoder count
 volatile int count_r = 0;       // Right wheel intermediate encoder count
 volatile int count_l = 0;       // Left wheel intermediate encoder count
+
+// Hip Encoder Counts:
+volatile int count_rh = 0;      // Right Hip Encoder Counts
+volatile int count_lh = 0;      // Left hip encoder counts
+volatile int count_rh_total = 0;      // Right hip encoder counts
+volatile int count_lh_total = 0;      // Left hip encoder counts
 
 // PID Constants for wheel velocity (loop one)
 double Kp_xdot = 0.030;
@@ -103,9 +113,47 @@ double r_theta_dot = 0; // Commanded turning velocity in rad/s
 double u_theta_dot = 0; // Output of turning velocity PID loop
 double theta_dot = 0;   // Current turning velocity
 
+// PID constants for hips
+double Kp_hips = 10;
+double Ki_hips = 1;
+double Kd_hips = 1;
+
+double r_hips = 0; // Commanded hip angle in radians
+double u_hips = 0; // Output of hip angle PID loop
+double hips = 0;   // Current hip angle (nominal angle, for both, to specify height)
+double r_hip_angle = 0;   // Current right hip angle
+double l_hip_angle = 0;   // Current left hip angle
+
+double HIPS_COMMAND_MIN = 0; // The maximum hips angle that can be commanded
+double HIPS_COMMAND_MAX = 1; // The minimum hips angle that can be commanded
+
+// PID constants for gamma_body
+double Kp_gamma = 10;
+double Ki_gamma = 1;
+double Kd_gamma = 1;
+
+double r_gamma = 0; // Commanded body roll angle in radians
+double u_gamma = 0; // Output of body roll angle PID loop. Added to hip motor drive command. 
+double gamma_body = 0;   // Current hip angle (nominal angle, for both, to specify height)
+
+// PID constants for neck
+double Kp_neck = 10;
+double Ki_neck = 1;
+double Kd_neck = 1;
+
+double r_neck = 0; // Commanded neck angle in radians
+double u_neck = 0; // Output of neck angle PID loop. Composes neck motor drive command. 
+double neck = 0;   // Current neck angle (nominal angle, for both, to specify height)
+
+double NECK_COMMAND_MIN = 0; // The maximum neck angle that can be commanded
+double NECK_COMMAND_MAX = 0; // The minimum neck angle that can be commanded
+
 PID velocity_PID(&xdot, &u_xdot, &r_xdot, Kp_xdot, Ki_xdot, Kd_xdot, DIRECT);
 PID angle_PID(&phi, &u_phi, &r_phi, Kp_phi, Ki_phi, Kd_phi, DIRECT);
 PID turning_velocity_PID(&theta_dot, &u_theta_dot, &r_theta_dot, Kp_theta_dot, Ki_theta_dot, Kd_theta_dot, DIRECT);
+PID hips_PID(&hips, &u_hips, &r_hips, Kp_hips, Ki_hips, Kd_hips, DIRECT);
+PID gamma_PID(&gamma_body, &u_gamma, &r_gamma, Kp_gamma, Ki_gamma, Kd_gamma, DIRECT);
+PID neck_PID(&neck, &u_neck, &r_neck, Kp_neck, Ki_neck, Kd_neck, DIRECT);
 
 // Hardware timer definitions
 hw_timer_t *timer0;
@@ -128,6 +176,10 @@ int pulse_length_grasper = 0;
 int grasper_pulse_max = 300; // absolute max servo will respond to is [70,500]
 int grasper_pulse_min = 70;
 
+int pulse_length_neck = 0;
+int neck_pulse_max = 300; // Untested neck servo! #TODO: Calibrate, these are guessed values
+int neck_pulse_min = 70;
+
 // Interrupt handler that runs every TIMER_INTERVAL_MS ms
 void IRAM_ATTR timerInterruptHandler()
 {
@@ -143,48 +195,142 @@ void IRAM_ATTR timerInterruptHandler()
   encoder_wheel_right.clearCount();
   encoder_wheel_right.clearCount();
 
+  count_rh = -1*encoder_hip_right.getCount();
+  count_lh = encoder_hip_left.getCount();
+  count_rh_total += count_rh;
+  count_lh_total += count_lh;
+  encoder_hip_right.clearCount();
+  encoder_hip_left.clearCount();
   interrupt_complete = true;
   portEXIT_CRITICAL_ISR(&timerMux0);
 }
 
+void enable(){
+  Serial.println("Enabling...");
+  currently_enabled = true;
+}
+void disable(){
+  Serial.println("Disabling...");
+  currently_enabled = false;
+}
+
 // Drive motors at desired dc_pwm
-void driveMotors(float u_l, float u_r)
+void driveWheelMotors(float u_l, float u_r)
 {
   // Constrain motor input
   u_l = constrain(u_l, -MAX_PWM, MAX_PWM);
   u_r = constrain(u_r, -MAX_PWM, MAX_PWM);
 
   // Set motor pins based on drive direction
+  if(false){// switch back to currently_enabled when finished with hip motor testing
+    if (u_l >= 0)
+    {
+      dc_pwm.setPin(WHEEL_MOTOR_LEFT_A, u_l, 0);
+      dc_pwm.setPin(WHEEL_MOTOR_LEFT_B, 0, 0);
+    }
+    else
+    {
+      dc_pwm.setPin(WHEEL_MOTOR_LEFT_A, 0, 0);
+      dc_pwm.setPin(WHEEL_MOTOR_LEFT_B, -u_l, 0);
+    }
 
-  if (u_l >= 0)
-  {
-    dc_pwm.setPin(WHEEL_MOTOR_LEFT_A, u_l, 0);
-    dc_pwm.setPin(WHEEL_MOTOR_LEFT_B, 0, 0);
+    if (u_r >= 0)
+    {
+      dc_pwm.setPin(WHEEL_MOTOR_RIGHT_A, 0, 0);
+      dc_pwm.setPin(WHEEL_MOTOR_RIGHT_B, u_r, 0);
+    }
+    else
+    {
+      dc_pwm.setPin(WHEEL_MOTOR_RIGHT_A, -u_r, 0);
+      dc_pwm.setPin(WHEEL_MOTOR_RIGHT_B, 0, 0);
+    }
   }
-  else
-  {
+  else{
+    // Zero all motors:
+    // Motor 1 (Left):
     dc_pwm.setPin(WHEEL_MOTOR_LEFT_A, 0, 0);
-    dc_pwm.setPin(WHEEL_MOTOR_LEFT_B, -u_l, 0);
-  }
-
-  if (u_r >= 0)
-  {
+    dc_pwm.setPin(WHEEL_MOTOR_LEFT_B, 0, 0);
+    // Motor 2 (Right):
     dc_pwm.setPin(WHEEL_MOTOR_RIGHT_A, 0, 0);
-    dc_pwm.setPin(WHEEL_MOTOR_RIGHT_B, u_r, 0);
-  }
-  else
-  {
-    dc_pwm.setPin(WHEEL_MOTOR_RIGHT_A, -u_r, 0);
     dc_pwm.setPin(WHEEL_MOTOR_RIGHT_B, 0, 0);
   }
 }
-
-void driveGrasper(float u_in)
+void driveJointMotors(float u_lh, float u_rh, float u_neck)
 {
-  // Takes in u_in, proportion between 0 and 1 of how closed the servo should be. 0 is open and 1 is fully closed. Can overactuate open.
-  pulse_length_grasper = grasper_pulse_min+int(u_in*(grasper_pulse_max-grasper_pulse_min));
+  // Constrain motor input
+  u_lh = constrain(u_lh, -MAX_PWM, MAX_PWM);
+  u_rh = constrain(u_rh, -MAX_PWM, MAX_PWM);
+  u_neck = constrain(u_neck, -MAX_PWM, MAX_PWM);
+  // Set motor pins based on drive direction
+  if(currently_enabled){
+    if (u_lh >= 0)
+    {
+      dc_pwm.setPin(HIP_MOTOR_LEFT_A, u_lh, 0);
+      dc_pwm.setPin(HIP_MOTOR_LEFT_B, 0, 0);
+    }
+    else
+    {
+      dc_pwm.setPin(HIP_MOTOR_LEFT_A, 0, 0);
+      dc_pwm.setPin(HIP_MOTOR_LEFT_B, -u_lh, 0);
+    }
+
+    if (u_rh >= 0)
+    {
+      dc_pwm.setPin(HIP_MOTOR_RIGHT_A, 0, 0);
+      dc_pwm.setPin(HIP_MOTOR_RIGHT_B, u_rh, 0);
+    }
+    else
+    {
+      dc_pwm.setPin(WHEEL_MOTOR_RIGHT_A, -u_rh, 0);
+      dc_pwm.setPin(WHEEL_MOTOR_RIGHT_B, 0, 0);
+    }
+
+    if (u_neck >= 0)
+    {
+      dc_pwm.setPin(NECK_MOTOR_A, 0, 0);
+      dc_pwm.setPin(NECK_MOTOR_B, u_neck, 0);
+    }
+    else
+    {
+      dc_pwm.setPin(NECK_MOTOR_A, -u_neck, 0);
+      dc_pwm.setPin(NECK_MOTOR_B, 0, 0);
+    }
+  }
+  else{
+    // Zero all motors:
+    // Motor 3 (Left Hip):
+    dc_pwm.setPin(HIP_MOTOR_LEFT_A, 0, 0);
+    dc_pwm.setPin(HIP_MOTOR_LEFT_B, 0, 0);
+    // Motor 4 (Right Hip):
+    dc_pwm.setPin(HIP_MOTOR_RIGHT_A, 0, 0);
+    dc_pwm.setPin(HIP_MOTOR_RIGHT_B, 0, 0);
+    // Motor 5 (Lower Neck):
+    dc_pwm.setPin(NECK_MOTOR_A, 0, 0);
+    dc_pwm.setPin(NECK_MOTOR_B, 0, 0);
+  }
+}
+
+// Drive Servos at desired angles
+void driveServos(float u_grasper, float u_neck)
+{
+  // Takes in u_grasper, proportion between 0 and 1 of how closed the servo should be. 0 is open and 1 is fully closed. Can overactuate open.
+  pulse_length_grasper = grasper_pulse_min+int(u_grasper*(grasper_pulse_max-grasper_pulse_min));
+  // Takes in u_neck, representing an angle command for the neck relative to its' zero position. 
+  // TODO: Calibrate once robot is more assembled.
+  pulse_length_neck = neck_pulse_min+int(u_neck*(neck_pulse_max-neck_pulse_min));
+  if(currently_enabled){
+    servo_pwm.setPWM(GRASPER_SERVO,0,pulse_length_grasper);
+    servo_pwm.setPWM(NECK_SERVO,0,pulse_length_neck);
+  }
+  else{
+    // Grasper (SRV_2)
+    servo_pwm.setPWM(GRASPER_SERVO,0,0); // Hopefully this just leaves free rotation an option! Investigate
+    // Nodding (SRV_1) 
+    servo_pwm.setPWM(NECK_SERVO,0,0);
+  }
 }
 // Synthesize and filter gyro and accelerometer readings to get accurate angle measurements
+
 void getAngles()
 {
   // Read IMU
@@ -227,7 +373,24 @@ void init_turning_velocity_PID()
   turning_velocity_PID.SetOutputLimits(-MAX_PWM, MAX_PWM);
   turning_velocity_PID.SetMode(AUTOMATIC);
 }
-
+void init_hips_PID()
+{
+  hips_PID.SetSampleTime(TIMER_INTERVAL_MS);
+  hips_PID.SetOutputLimits(-MAX_PWM, MAX_PWM);
+  hips_PID.SetMode(AUTOMATIC);
+}
+void init_gamma_PID()
+{
+  gamma_PID.SetSampleTime(TIMER_INTERVAL_MS);
+  gamma_PID.SetOutputLimits(-MAX_PWM, MAX_PWM);
+  gamma_PID.SetMode(AUTOMATIC);
+}
+void init_neck_PID()
+{
+  neck_PID.SetSampleTime(TIMER_INTERVAL_MS);
+  neck_PID.SetOutputLimits(-MAX_PWM, MAX_PWM);
+  neck_PID.SetMode(AUTOMATIC);
+}
 // Set velocity setpoint
 void set_velocity(JsonArray arguments)
 {
@@ -266,8 +429,52 @@ void set_turning_velocity(JsonArray arguments)
   char buffer[40];
   sprintf(buffer, "Setting theta_dot: %6f.", r_theta_dot);
   //Serial.println(buffer);
+} 
+void set_neck_command(JsonArray arguments)
+{
+  if (arguments.size() != 1)
+  {
+    Serial.println("Incorrect number of arguments for setting neck angle");
+    return;
+  }
+  float neck_input = arguments[0];
+  r_neck += neck_input;
+  if ((r_neck) > NECK_COMMAND_MAX){
+    r_neck = NECK_COMMAND_MAX;
+  }
+  else if (r_neck<NECK_COMMAND_MIN)
+  {
+    r_neck = NECK_COMMAND_MIN;
+    return;
+  }
+  char buffer[40];
+  sprintf(buffer, "Setting r_neck: %6f.", r_neck);
+  //Serial.println(buffer);
 }
 
+void set_hips_command(JsonArray arguments)
+{
+  if (arguments.size() != 1)
+  {
+    Serial.println("Incorrect number of arguments for setting hips angle");
+    return;
+  }
+  float hips_input = arguments[0];
+  r_hips += hips_input;
+  if ((r_hips) > HIPS_COMMAND_MAX){
+    r_hips = HIPS_COMMAND_MAX;
+  }
+  else if (r_hips<HIPS_COMMAND_MIN)
+  {
+    r_hips = HIPS_COMMAND_MIN;
+    return;
+  }
+  char buffer[40];
+  sprintf(buffer, "Setting r_hips: %6f.", r_hips);
+  Serial.println(buffer);
+}
+
+// Set PID Constants:
 void set_velocity_pid_constants(JsonArray arguments)
 {
   if (arguments.size() != 3)
@@ -283,7 +490,6 @@ void set_velocity_pid_constants(JsonArray arguments)
   sprintf(buffer, "Setting Kp_xdot = %6f, Ki_xdot = %6f, Kd_xdot = %6f.", Kp_xdot, Ki_xdot, Kd_xdot);
   Serial.println(buffer);
 }
-
 void set_angle_pid_constants(JsonArray arguments)
 {
   if (arguments.size() != 3)
@@ -299,7 +505,6 @@ void set_angle_pid_constants(JsonArray arguments)
   sprintf(buffer, "Setting Kp_phi = %6f, Ki_phi = %6f, Kd_phi = %6f.", Kp_phi, Ki_phi, Kd_phi);
   Serial.println(buffer);
 }
-
 void set_turning_velocity_pid_constants(JsonArray arguments)
 {
   if (arguments.size() != 3)
@@ -311,29 +516,84 @@ void set_turning_velocity_pid_constants(JsonArray arguments)
   Ki_theta_dot = arguments[1];
   Kd_theta_dot = arguments[2];
   char buffer[100];
-  turning_velocity_PID.SetTunings(Kp_xdot,Ki_xdot,Kd_xdot);
+  turning_velocity_PID.SetTunings(Kp_theta_dot,Ki_theta_dot,Kd_theta_dot);
 
   sprintf(buffer, "Setting Kp_theta_dot = %6f, Ki_theta_dot = %6f, Kd_theta_dot = %6f.", Kp_theta_dot, Ki_theta_dot, Kd_theta_dot);
   Serial.println(buffer);
 }
+void set_hips_pid_constants(JsonArray arguments)
+{
+  if (arguments.size() != 3)
+  {
+    Serial.println("Incorrect number of arguments for setting turning velocity PID constants");
+    return;
+  }
+  Kp_hips = arguments[0];
+  Ki_hips = arguments[1];
+  Kd_hips = arguments[2];
+  char buffer[100];
+  hips_PID.SetTunings(Kp_hips,Ki_hips,Kd_hips);
 
-// Process JSON commands sent over Bluetooth
-//
-// OPCODES
-// 0 - set_velocity(double velocity)
-// 1 - set_theta_dot(double theta_dot)
-// 2 - set_velocity_pid_constants(double Kp, double Ki, double Kd)
-// 3 - set_phi_pid_constants(double Kp, double Ki, double Kd)
-// 4 - set_theta_dot_pid_constants(double Kp, double Ki, double Kd)
+  sprintf(buffer, "Setting Kp_hips = %6f, Ki_hips = %6f, Kd_hips = %6f.", Kp_hips, Ki_hips, Kd_hips);
+  Serial.println(buffer);
+}
+void set_gamma_pid_constants(JsonArray arguments)
+{
+  if (arguments.size() != 3)
+  {
+    Serial.println("Incorrect number of arguments for setting turning velocity PID constants");
+    return;
+  }
+  Kp_gamma = arguments[0];
+  Ki_gamma = arguments[1];
+  Kd_gamma = arguments[2];
+  char buffer[100];
+  gamma_PID.SetTunings(Kp_gamma,Ki_gamma,Kd_gamma);
+
+  sprintf(buffer, "Setting Kp_gamma = %6f, Ki_gamma = %6f, Kd_gamma = %6f.", Kp_gamma, Ki_gamma, Kd_gamma);
+  Serial.println(buffer);
+}
+void set_neck_pid_constants(JsonArray arguments)
+{
+  if (arguments.size() != 3)
+  {
+    Serial.println("Incorrect number of arguments for setting turning velocity PID constants");
+    return;
+  }
+  Kp_neck = arguments[0];
+  Ki_neck = arguments[1];
+  Kd_neck = arguments[2];
+  char buffer[100];
+  neck_PID.SetTunings(Kp_neck,Ki_neck,Kd_neck);
+
+  sprintf(buffer, "Setting Kp_neck = %6f, Ki_neck = %6f, Kd_neck = %6f.", Kp_neck, Ki_neck, Kd_neck);
+  Serial.println(buffer);
+}
 
 void processReceivedValue(char b, String &command)
 {
+  // Process JSON commands sent over Serial
+  //
+  // OPCODES
+  // 0 - set_velocity(double velocity)
+  // 1 - set_theta_dot(double theta_dot)
+  // 2 - set_velocity_pid_constants(double Kp, double Ki, double Kd)
+  // 3 - set_phi_pid_constants(double Kp, double Ki, double Kd)
+  // 4 - set_theta_dot_pid_constants(double Kp, double Ki, double Kd)
+  // 5 - enable robot
+  // 6 - disable robot
+  // 7 - set_hips_pid
+  // 8 - set_gamma_pid
+  // 9 - set_neck_pid_constants
+  // 10 - set_neck_command
+  // 11 - set_hips_command 
   if (b == DELIMITER)
   {
     DynamicJsonDocument doc(1024);
     deserializeJson(doc, command);
-    int opcode = doc["command"];
+    int opcode = doc["cmd"];
     JsonArray arguments = doc["args"];
+    Serial.println("Opc:"+opcode);
     if (arguments != NULL)
     {
       switch (opcode)
@@ -353,6 +613,27 @@ void processReceivedValue(char b, String &command)
       case 4:
         set_turning_velocity_pid_constants(arguments);
         break;
+      case 5:
+        enable();
+        break;
+      case 6:
+        disable();
+        break;
+      case 7:
+        set_hips_pid_constants(arguments);
+        break;
+      case 8: 
+        set_gamma_pid_constants(arguments);
+        break;
+      case 9: 
+        set_neck_pid_constants(arguments);
+        break;
+      case 10:
+        set_neck_command(arguments);
+        break;
+      case 11:
+        set_hips_command(arguments);
+        break;
       }
     }
     else
@@ -368,6 +649,7 @@ void processReceivedValue(char b, String &command)
 
   return;
 }
+
 void processReceivedJetsonValue(char b, String &command_2)
 {
   if (b == DELIMITER)
@@ -415,7 +697,8 @@ Serial2.write(buf, 2);
 
 }
 
-void setup(){
+void setup()
+{
   Serial.begin(115200);
   SerialBT.begin("ESP32");
   Serial2.begin(115200);
@@ -423,8 +706,8 @@ void setup(){
   // Wait until serial port initialized before progressing
   while (!Serial)
     ;
-  while (!Serial2)
-    ;
+  // while (!Serial2)
+  //   ;
 
   // I2C wire initialization
   Wire.begin();
@@ -465,10 +748,15 @@ void setup(){
 
   // Initialize encoders
   ESP32Encoder::useInternalWeakPullResistors = UP;
-  encoder_wheel_right.attachHalfQuad(33, 4);
-  encoder_wheel_left.attachHalfQuad(5, 13);
+  encoder_wheel_right.attachHalfQuad(33, 4); // ENC 
+  encoder_wheel_left.attachHalfQuad(5, 13); // ENC 2A,B
   encoder_wheel_right.clearCount();
   encoder_wheel_left.clearCount();
+
+  encoder_hip_right.attachHalfQuad(14, 15);
+  encoder_hip_left.attachHalfQuad(18, 19);
+  encoder_hip_right.clearCount();
+  encoder_hip_left.clearCount();
 
   dc_pwm.begin();
   dc_pwm.setOscillatorFrequency(27000000);
@@ -490,6 +778,19 @@ void setup(){
   dc_pwm.setPin(WHEEL_MOTOR_RIGHT_A, 0, 0);
   dc_pwm.setPin(WHEEL_MOTOR_RIGHT_B, 0, 0);
 
+  // Motor 3 (Left Hip):
+  dc_pwm.setPin(HIP_MOTOR_LEFT_A, 0, 0);
+  dc_pwm.setPin(HIP_MOTOR_LEFT_B, 0, 0);
+  // Motor 4 (Right Hip):
+  dc_pwm.setPin(HIP_MOTOR_RIGHT_A, 0, 0);
+  dc_pwm.setPin(HIP_MOTOR_RIGHT_B, 0, 0);
+
+  // Motor 5 (Lower Neck):
+  dc_pwm.setPin(NECK_MOTOR_A, 0, 0);
+  dc_pwm.setPin(NECK_MOTOR_B, 0, 0);
+
+  // Nodding (SRV_1)
+  servo_pwm.setPWM(NECK_SERVO, 0, 0);
   // Grasper (SRV_2)
   servo_pwm.setPWM(GRASPER_SERVO, 0, 0);
 
@@ -502,12 +803,16 @@ void setup(){
   init_angle_PID();
   init_velocity_PID();
   init_turning_velocity_PID();
+  init_hips_PID();
+  init_gamma_PID();
+  // init_neck_PID();
+
+  Serial.println();
 }
 
 void loop()
 {
-  if (interrupt_complete)
-  {
+  if (interrupt_complete){
     // ensuring reset isn't skipped:
     portENTER_CRITICAL(&timerMux0);
     interrupt_complete = false;
@@ -517,6 +822,11 @@ void loop()
     xdot_l = count_l * 4 * 3.14159265 * WHEEL_RADIUS / (2248.86 * TIMER_INTERVAL_MS / 1000);
     xdot_r = count_r * 4 * 3.14159265 * WHEEL_RADIUS / (2248.86 * TIMER_INTERVAL_MS / 1000);
     xdot = ((count_l + count_r) / 2) * 4 * 3.14159265 * WHEEL_RADIUS / (2248.86 * TIMER_INTERVAL_MS / 1000); //(m/s)
+    
+    // Calculate current hip angles from encoders
+    l_hip_angle = 2*count_lh_total*2*3.14159265*24 /(8400*28); // 8200 counts per revolution
+    r_hip_angle = 2*count_rh_total*2*3.14159265*24 /(8400*28); // 8200 counts per revolution
+    hips = (r_hip_angle + l_hip_angle)/2;
 
     // Read in gyro data and compute PID outputs
     getAngles();
@@ -524,6 +834,7 @@ void loop()
     r_phi = PHI_SETPOINT_RATIO * u_xdot;
     angle_PID.Compute();
     turning_velocity_PID.Compute();
+    hips_PID.Compute();
 
     // Print telemetry to serial
     // Serial.print("Motor forward input (dc_pwm):");
@@ -537,12 +848,17 @@ void loop()
     // Serial.print(", Current turning velocity (rad/s):");
     // Serial.print(theta_dot);
     // Serial.print(", Motor turning velocity input:");
-    // Serial.print(u_theta_dot);
-    // Serial.println();
-    
+    //Serial.print(u_theta_dot);
+    //Serial.println();
+    // Serial.println(">hips:"+String(hips));
+    // Serial.println(">r_hips:"+String(r_hips));
+    // Serial.println(">u_hips:"+String(u_hips));
+    // Serial.println(">u_gamma:"+String(u_gamma));
+    //Serial.println(">r_hips:"+String(r_hips));
     // Drive motors using output from tilt angle and turning velocity PID loops
-    driveMotors(u_phi + u_theta_dot, u_phi - u_theta_dot);
-    driveGrasper(0);
+    driveWheelMotors(u_phi + u_theta_dot, u_phi - u_theta_dot);
+    driveJointMotors(u_hips+u_gamma,u_hips-u_gamma,0); // last term should be u_neck
+    driveServos(0,0);
 
   }
 

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 import pygame, pygame_gui, time, sys
 from pygame.locals import *
 
@@ -14,9 +13,9 @@ CONNECTION_TIMEOUT = 10
 
 FORWARD_SPEED = 0.5
 TURN_SPEED = 0.5
+SQUAT_SPEED = 0.1
 
 CONTROL_DELAY = 100
-
 
 KP_W_DEFAULT = 0.030
 KI_W_DEFAULT = 0.3
@@ -35,7 +34,6 @@ kp_phi = KP_PHI_DEFAULT
 ki_phi = KI_PHI_DEFAULT
 kd_phi = KD_PHI_DEFAULT
 
-
 KP_THETA_DOT_DEFAULT = 200
 KI_THETA_DOT_DEFAULT = 150
 KD_THETA_DOT_DEFAULT = 5
@@ -44,6 +42,32 @@ kp_theta_dot = KP_THETA_DOT_DEFAULT
 ki_theta_dot = KI_THETA_DOT_DEFAULT
 kd_theta_dot = KD_THETA_DOT_DEFAULT
 
+KP_HIPS_DEFAULT = 10
+KI_HIPS_DEFAULT = 1
+KD_HIPS_DEFAULT = 1
+
+kp_hips = KP_HIPS_DEFAULT
+ki_hips = KI_HIPS_DEFAULT
+kd_hips = KD_HIPS_DEFAULT
+
+KP_GAMMA_DEFAULT = 10
+KI_GAMMA_DEFAULT = 1
+KD_GAMMA_DEFAULT = 1
+
+kp_gamma = KP_GAMMA_DEFAULT
+ki_gamma = KI_GAMMA_DEFAULT
+kd_gamma = KD_GAMMA_DEFAULT
+
+KP_NECK_DEFAULT = 10
+KI_NECK_DEFAULT = 1
+KD_NECK_DEFAULT = 1
+
+kp_neck = KP_NECK_DEFAULT
+ki_neck = KI_NECK_DEFAULT
+kd_neck = KD_NECK_DEFAULT
+
+currently_enabled = False
+
 async def receive(reader):
     print("receiving...")
     while True:
@@ -51,7 +75,7 @@ async def receive(reader):
         print(f'(recv): {data.strip().decode()}')
 
 async def run_controller(writer, input_type):
-    global kp_w, ki_w, kd_w, kp_phi, ki_phi, kd_phi, kp_theta_dot, ki_theta_dot, kd_theta_dot, angle1, angle2
+    global kp_w, ki_w, kd_w, kp_phi, ki_phi, kd_phi, kp_theta_dot, ki_theta_dot, kd_theta_dot, kp_hips, ki_hips, kd_hips, kp_gamma, ki_gamma, kd_gamma, kp_neck, ki_neck, kd_neck, angle1, angle2
     writer.write(b"Controller connected.\n")
 
     pygame.init()
@@ -59,9 +83,8 @@ async def run_controller(writer, input_type):
     background = pygame.Surface((800, 600))
     background.fill(pygame.Color('#ffffff'))
 
-    manager = pygame_gui.UIManager((800, 600))
-
-    grid = [[(100 + 120*i, 75 + 150*j) for j in range(3)] for i in range(5)]
+    manager = pygame_gui.UIManager((800, 1200))
+    grid = [[(100 + 120*i, 75 + 80*j) for j in range(7)] for i in range(5)]
 
     vel_kp = pygame_gui.elements.UITextEntryLine(relative_rect=pygame.Rect(grid[0][0], (100, 50)),
             manager=manager)
@@ -76,11 +99,11 @@ async def run_controller(writer, input_type):
     vel_kd.set_text(str(kd_w))
 
     vel_save = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(grid[3][0], (100, 50)),
-            text='Save',
+            text='Save vel',
             manager=manager)
 
     vel_reset = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(grid[4][0], (100, 50)),
-            text='Reset',
+            text='Reset vel',
             manager=manager)
 
     phi_kp = pygame_gui.elements.UITextEntryLine(relative_rect=pygame.Rect(grid[0][1], (100, 50)),
@@ -96,11 +119,11 @@ async def run_controller(writer, input_type):
     phi_kd.set_text(str(kd_phi))
 
     phi_save = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(grid[3][1], (100, 50)),
-            text='Save',
+            text='Save phi',
             manager=manager)
 
     phi_reset = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(grid[4][1], (100, 50)),
-            text='Reset',
+            text='Reset phi',
             manager=manager)
 
     theta_dot_kp = pygame_gui.elements.UITextEntryLine(relative_rect=pygame.Rect(grid[0][2], (100, 50)),
@@ -116,13 +139,82 @@ async def run_controller(writer, input_type):
     theta_dot_kd.set_text(str(kd_theta_dot))
 
     theta_dot_save = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(grid[3][2], (100, 50)),
-            text='Save',
+            text='Save th_dot',
             manager=manager)
 
     theta_dot_reset = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(grid[4][2], (100, 50)),
-            text='Reset',
+            text='Reset th_dot',
             manager=manager)
 
+    # New Loop Tunings:
+    hips_kp = pygame_gui.elements.UITextEntryLine(relative_rect=pygame.Rect(grid[0][3], (100, 50)),
+            manager=manager)
+    hips_kp.set_text(str(kp_hips))
+
+    hips_ki = pygame_gui.elements.UITextEntryLine(relative_rect=pygame.Rect(grid[1][3], (100, 50)),
+            manager=manager)
+    hips_ki.set_text(str(ki_hips))
+
+    hips_kd = pygame_gui.elements.UITextEntryLine(relative_rect=pygame.Rect(grid[2][3], (100, 50)),
+            manager=manager)
+    hips_kd.set_text(str(kd_hips))
+
+    hips_save = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(grid[3][3], (100, 50)),
+            text='Save Hips',
+            manager=manager)
+
+    hips_reset = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(grid[4][3], (100, 50)),
+            text='Reset Hips',
+            manager=manager)
+    
+    # Gamma PID Loop (roll angle)
+    gamma_kp = pygame_gui.elements.UITextEntryLine(relative_rect=pygame.Rect(grid[0][4], (100, 50)),
+            manager=manager)
+    gamma_kp.set_text(str(kp_gamma))
+
+    gamma_ki = pygame_gui.elements.UITextEntryLine(relative_rect=pygame.Rect(grid[1][4], (100, 50)),
+            manager=manager)
+    gamma_ki.set_text(str(ki_gamma))
+
+    gamma_kd = pygame_gui.elements.UITextEntryLine(relative_rect=pygame.Rect(grid[2][4], (100, 50)),
+            manager=manager)
+    gamma_kd.set_text(str(kd_gamma))
+
+    gamma_save = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(grid[3][4], (100, 50)),
+            text='Save gamma',
+            manager=manager)
+
+    gamma_reset = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(grid[4][4], (100, 50)),
+            text='Reset gamma',
+            manager=manager)
+
+    neck_kp = pygame_gui.elements.UITextEntryLine(relative_rect=pygame.Rect(grid[0][5], (100, 50)),
+            manager=manager)
+    neck_kp.set_text(str(kp_neck))
+
+    neck_ki = pygame_gui.elements.UITextEntryLine(relative_rect=pygame.Rect(grid[1][5], (100, 50)),
+            manager=manager)
+    neck_ki.set_text(str(ki_neck))
+
+    neck_kd = pygame_gui.elements.UITextEntryLine(relative_rect=pygame.Rect(grid[2][5], (100, 50)),
+            manager=manager)
+    neck_kd.set_text(str(kd_neck))
+
+    neck_save = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(grid[3][5], (100, 50)),
+            text='Save Neck',
+            manager=manager)
+
+    neck_reset = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(grid[4][5], (100, 50)),
+            text='Reset Neck',
+            manager=manager)
+
+    enable = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(grid[3][6], (100, 50)),
+            text='Enable',
+            manager=manager)
+
+    disable = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(grid[4][6], (100, 50)),
+            text='Disable',
+            manager=manager)
     pygame.display.set_caption('ChickenBot Controller')
 
     pygame.joystick.init()
@@ -138,30 +230,55 @@ async def run_controller(writer, input_type):
     while True:
         time_delta = clock.tick(60)
         if not keyboard:
-            writer.write(b'{"command":0, "args":[%6f]}\n' % (-joysticks[0].get_axis(1)))
-            writer.write(b'{"command":1, "args":[%6f]}\n' % joysticks[0].get_axis(2))
+            writer.write(b'{"cmd":0, "args":[%6f]}\n' % (-joysticks[0].get_axis(1)))
+            writer.write(b'{"cmd":1, "args":[%6f]}\n' % joysticks[0].get_axis(2))
             print("Setting speed: ", -joysticks[0].get_axis(1), ", turn speed: ", joysticks[0].get_axis(2))
         else:
             keys = pygame.key.get_pressed()
-            if keys[pygame.K_UP]:
-                writer.write(b'{"command":0,"args":[%6f]}\n' % FORWARD_SPEED)
+            if keys[pygame.K_w]:
+                writer.write(b'{"cmd":0,"args":[%6f]}\n' % FORWARD_SPEED)
                 print("Setting speed: ", FORWARD_SPEED)
-            elif keys[pygame.K_DOWN]:
-                writer.write(b'{"command":0,"args":[%6f]}\n' % (-FORWARD_SPEED))
+            elif keys[pygame.K_s]:
+                writer.write(b'{"cmd":0,"args":[%6f]}\n' % (-FORWARD_SPEED))
                 print("Setting speed: ", -FORWARD_SPEED)
             else:
-                writer.write(b'{"command":0,"args":[0]}\n')
+                writer.write(b'{"cmd":0,"args":[0]}\n')
                 print("Setting speed: ", 0)
-            if keys[pygame.K_LEFT]:
-                writer.write(b'{"command":1,"args":[%6f]}\n' % (-TURN_SPEED))
+            if keys[pygame.K_a]:
+                writer.write(b'{"cmd":1,"args":[%6f]}\n' % (-TURN_SPEED))
                 print("Setting turn speed", -TURN_SPEED)
-            elif keys[pygame.K_RIGHT]:
-                writer.write(b'{"command":1,"args":[%6f]}\n' % TURN_SPEED)
+            elif keys[pygame.K_d]:
+                writer.write(b'{"cmd":1,"args":[%6f]}\n' % TURN_SPEED)
                 print("Setting turn speed: ", TURN_SPEED)
             else:
-                writer.write(b'{"command":1,"args":[0]}\n')
+                writer.write(b'{"cmd":1,"args":[0]}\n')
                 print("Setting turn speed: ", 0)
-
+            # TODO: Add support for q/z -> change hip angle cmd
+            
+            # (q,z) increase height and decrease height
+            if keys[pygame.K_q]:
+                writer.write(b'{"cmd":11,"args":[%6f]}\n' % (-SQUAT_SPEED))
+                print("Setting squat speed:", -SQUAT_SPEED)
+            elif keys[pygame.K_z]:
+                writer.write(b'{"cmd":11,"args":[%6f]}\n' % SQUAT_SPEED)
+                print("Setting hip speed: ", SQUAT_SPEED)
+            else:
+                writer.write(b'{"cmd":11,"args":[0]}\n')
+                print("Setting hip speed: ", 0)
+            
+            # TODO: Add support for e/c -> change neck angle cmd
+            '''
+            # (e,c) increase height and decrease height
+            if keys[pygame.K_e]:
+                writer.write(b'{"cmd":10,"args":[%6f]}\n' % (-NECK_SPEED))
+                print("Setting neck speed", -NECK_SPEED)
+            elif keys[pygame.K_z]:
+                writer.write(b'{"cmd":10,"args":[%6f]}\n' % NECK_SPEED)
+                print("Setting neck speed: ", NECK_SPEED)
+            else:
+                writer.write(b'{"cmd":10,"args":[0]}\n')
+                print("Setting neck speed: ", 0)
+            '''
         for event in pygame.event.get():
             if event.type == QUIT:
                 sys.exit()
@@ -171,7 +288,7 @@ async def run_controller(writer, input_type):
                         kp_w = float(vel_kp.get_text())
                         ki_w = float(vel_ki.get_text())
                         kd_w = float(vel_kd.get_text())
-                        writer.write(b'{"command":2,"args":[%6f, %6f, %6f]}\n' % (kp_w, ki_w, kd_w))
+                        writer.write(b'{"cmd":2,"args":[%6f, %6f, %6f]}\n' % (kp_w, ki_w, kd_w))
                     if event.ui_element == vel_reset:
                         kp_w = KP_W_DEFAULT
                         ki_w = KI_W_DEFAULT
@@ -179,12 +296,12 @@ async def run_controller(writer, input_type):
                         vel_kp.set_text(str(kp_w))
                         vel_ki.set_text(str(ki_w))
                         vel_kd.set_text(str(kd_w))
-                        writer.write(b'{"command":2,"args":[%6f, %6f, %6f]}\n' % (kp_w, ki_w, kd_w))
+                        writer.write(b'{"cmd":2,"args":[%6f, %6f, %6f]}\n' % (kp_w, ki_w, kd_w))
                     if event.ui_element == phi_save:
                         kp_phi = float(phi_kp.get_text())
                         ki_phi = float(phi_ki.get_text())
                         kd_phi = float(phi_kd.get_text())
-                        writer.write(b'{"command":3,"args":[%6f, %6f, %6f]}\n' % (kp_phi, ki_phi, kd_phi))
+                        writer.write(b'{"cmd":3,"args":[%6f, %6f, %6f]}\n' % (kp_phi, ki_phi, kd_phi))
                     if event.ui_element == phi_reset:
                         kp_phi = KP_PHI_DEFAULT
                         ki_phi = KI_PHI_DEFAULT
@@ -192,12 +309,12 @@ async def run_controller(writer, input_type):
                         phi_kp.set_text(str(kp_phi))
                         phi_ki.set_text(str(ki_phi))
                         phi_kd.set_text(str(kd_phi))
-                        writer.write(b'{"command":3,"args":[%6f, %6f, %6f]}\n' % (kp_phi, ki_phi, kd_phi))
+                        writer.write(b'{"cmd":3,"args":[%6f, %6f, %6f]}\n' % (kp_phi, ki_phi, kd_phi))
                     if event.ui_element == theta_dot_save:
                         kp_theta_dot = float(theta_dot_kp.get_text())
                         ki_theta_dot = float(theta_dot_ki.get_text())
                         kd_theta_dot = float(theta_dot_kd.get_text())
-                        writer.write(b'{"command":4,"args":[%6f, %6f, %6f]}\n' % (kp_theta_dot, ki_theta_dot, kd_theta_dot))
+                        writer.write(b'{"cmd":4,"args":[%6f, %6f, %6f]}\n' % (kp_theta_dot, ki_theta_dot, kd_theta_dot))
                     if event.ui_element == theta_dot_reset:
                         kp_theta_dot = KP_THETA_DOT_DEFAULT
                         ki_theta_dot = KI_THETA_DOT_DEFAULT
@@ -205,7 +322,51 @@ async def run_controller(writer, input_type):
                         theta_dot_kp.set_text(str(kp_theta_dot))
                         theta_dot_ki.set_text(str(ki_theta_dot))
                         theta_dot_kd.set_text(str(kd_theta_dot))
-                        writer.write(b'{"command":4,"args":[%6f, %6f, %6f]}\n' % (kp_theta_dot, ki_theta_dot, kd_theta_dot))
+                        writer.write(b'{"cmd":4,"args":[%6f, %6f, %6f]}\n' % (kp_theta_dot, ki_theta_dot, kd_theta_dot))
+                    if event.ui_element == hips_save:
+                        kp_hips = float(hips_kp.get_text())
+                        ki_hips = float(hips_ki.get_text())
+                        kd_hips = float(hips_kd.get_text())
+                        writer.write(b'{"cmd":7,"args":[%6f, %6f, %6f]}\n' % (kp_hips, ki_hips, kd_hips))
+                    if event.ui_element == hips_reset:
+                        kp_hips = KP_HIPS_DEFAULT
+                        ki_hips = KI_HIPS_DEFAULT
+                        kd_hips = KD_HIPS_DEFAULT
+                        hips_kp.set_text(str(kp_hips))
+                        hips_ki.set_text(str(ki_hips))
+                        hips_kd.set_text(str(kd_hips))
+                        writer.write(b'{"cmd":7,"args":[%6f, %6f, %6f]}\n' % (kp_hips, ki_hips, kd_hips))
+                    if event.ui_element == gamma_save:
+                        kp_gamma = float(gamma_kp.get_text())
+                        ki_gamma = float(gamma_ki.get_text())
+                        kd_gamma = float(gamma_kd.get_text())
+                        writer.write(b'{"cmd":8,"args":[%6f, %6f, %6f]}\n' % (kp_gamma, ki_gamma, kd_gamma))
+                    if event.ui_element == gamma_reset:
+                        kp_gamma = KP_GAMMA_DEFAULT
+                        ki_gamma = KI_GAMMA_DEFAULT
+                        kd_gamma = KD_GAMMA_DEFAULT
+                        gamma_kp.set_text(str(kp_gamma))
+                        gamma_ki.set_text(str(ki_gamma))
+                        gamma_kd.set_text(str(kd_gamma))
+                        writer.write(b'{"cmd":8,"args":[%6f, %6f, %6f]}\n' % (kp_gamma, ki_gamma, kd_gamma))
+                    if event.ui_element == neck_save:
+                        kp_neck = float(neck_kp.get_text())
+                        ki_neck = float(neck_ki.get_text())
+                        kd_neck = float(neck_kd.get_text())
+                        writer.write(b'{"cmd":9,"args":[%6f, %6f, %6f]}\n' % (kp_neck, ki_neck, kd_neck))
+                    if event.ui_element == neck_reset:
+                        kp_neck = KP_NECK_DEFAULT
+                        ki_neck = KI_NECK_DEFAULT
+                        kd_neck = KD_NECK_DEFAULT
+                        neck_kp.set_text(str(kp_neck))
+                        neck_ki.set_text(str(ki_neck))
+                        neck_kd.set_text(str(kd_neck))
+                        writer.write(b'{"cmd":9,"args":[%6f, %6f, %6f]}\n' % (kp_neck, ki_neck, kd_neck))
+                    if event.ui_element == enable:
+                        writer.write(b'{"cmd":5,"args":[]}\n')
+                    if event.ui_element == disable:
+                        writer.write(b'{"cmd":6,"args":[]}\n')
+
             except Exception as e:
                 print(f"UI Error: {e}")
 
