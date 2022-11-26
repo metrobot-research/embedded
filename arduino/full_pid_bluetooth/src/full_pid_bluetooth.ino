@@ -49,12 +49,12 @@ using Eigen::MatrixXd;
 #define CF_TIME_CONSTANT 0.995 // Time constant a for complementary filter
 
 // General PID constants
-#define MAX_VELOCITY 0.1       // Maximum magnitude of velocity PID output
+#define MAX_VELOCITY 0.5       // Maximum magnitude of velocity PID output
 #define MAX_PWM 4096           // Maximum magnitude of motor controller PID outputs
 #define PHI_SETPOINT_RATIO 1.0 // Ratio of setpoint of tilt controller to output of velocity controller
 
 // Time constants
-#define TIMER_INTERVAL_MS 25 // Interval between timer interrupts
+#define TIMER_INTERVAL_MS 25. // Interval between timer interrupts
 
 // Robot state declarator
 volatile bool currently_enabled= false;
@@ -89,7 +89,7 @@ double Ki_xdot = 0.3;
 double Kd_xdot = 0.002;
 
 double r_xdot = 0; // Commanded wheel speed in m/s
-double u_xdot = 0; // Output of wheel velocity PID loop
+double u_xdot = 0; // Output of velocity PID, added to balancing loop to command velocity robot motion
 double xdot_l = 0;
 double xdot_r = 0;
 double xdot = 0; // Current average velocity of left and right wheels
@@ -103,6 +103,13 @@ double r_phi = 0;   // Commanded tilt in radians
 double u_phi = 0;   // Output of tilt PID loop
 double phi = 0;     // Tilt calculated by gyro
 double phi_acc = 0; // Tilt calculated by accelerometer
+
+// PID Constants for Phidot
+double phidot = 0;  // Rate of change of phi from gyro only
+double r_phidot = 0;
+double Kp_phidot = 1;
+double Ki_phidot = 1;
+double Kd_phidot = 0.1;
 
 // PID constants for turning velocity
 double Kp_theta_dot = 200;
@@ -150,6 +157,7 @@ double NECK_COMMAND_MAX = 0; // The minimum neck angle that can be commanded
 
 PID velocity_PID(&xdot, &u_xdot, &r_xdot, Kp_xdot, Ki_xdot, Kd_xdot, DIRECT);
 PID angle_PID(&phi, &u_phi, &r_phi, Kp_phi, Ki_phi, Kd_phi, DIRECT);
+PID phidot_PID(&phidot,&r_phi,&r_phidot, Kp_phidot, Ki_phidot, Kd_phidot, DIRECT);
 PID turning_velocity_PID(&theta_dot, &u_theta_dot, &r_theta_dot, Kp_theta_dot, Ki_theta_dot, Kd_theta_dot, DIRECT);
 PID hips_PID(&hips, &u_hips, &r_hips, Kp_hips, Ki_hips, Kd_hips, DIRECT);
 PID gamma_PID(&gamma_body, &u_gamma, &r_gamma, Kp_gamma, Ki_gamma, Kd_gamma, DIRECT);
@@ -192,7 +200,7 @@ void IRAM_ATTR timerInterruptHandler()
   count_l_total += count_l;
 
   // Clear encoders
-  encoder_wheel_right.clearCount();
+  encoder_wheel_left.clearCount();
   encoder_wheel_right.clearCount();
 
   count_rh = -1*encoder_hip_right.getCount();
@@ -222,7 +230,7 @@ void driveWheelMotors(float u_l, float u_r)
   u_r = constrain(u_r, -MAX_PWM, MAX_PWM);
 
   // Set motor pins based on drive direction
-  if(false){// switch back to currently_enabled when finished with hip motor testing
+  if(currently_enabled){// switch back to currently_enabled when finished with hip motor testing, or false when wheels are disabled
     if (u_l >= 0)
     {
       dc_pwm.setPin(WHEEL_MOTOR_LEFT_A, u_l, 0);
@@ -339,9 +347,9 @@ void getAngles()
   xyzFloat gyr = IMU.getGyrValues(); // Angular velocity vector in deg/s
 
   // Calculate tilt angle from gyro data
-  phi = phi - gyr.y * TIMER_INTERVAL_MS / 1000 * (PI / 180); // Integrate gyro angular velocity about the y-axis to get tilt
-  theta_dot = gyr.z * TIMER_INTERVAL_MS / 1000 * (PI / 180);
-
+  phi = phi - gyr.y * TIMER_INTERVAL_MS / 1000. * (PI / 180.); // Integrate gyro angular velocity about the y-axis to get tilt
+  theta_dot = gyr.z * TIMER_INTERVAL_MS / 1000. * (PI / 180.);
+  phidot = -gyr.y * (PI / 180.); // Angular velocity as detected by gyro, no filtering
   // Calculate tilt angle from accelerometer data
   acc_vec << acc.x, acc.y, acc.z;
   phi_acc = atan2((ACC_VERTICAL_VEC.cross(acc_vec)).dot(acc_normal_vec), acc_vec.dot(ACC_VERTICAL_VEC));
@@ -353,7 +361,7 @@ void getAngles()
 // Initialize velocity PID loop
 void init_velocity_PID()
 {
-  velocity_PID.SetSampleTime(TIMER_INTERVAL_MS);
+  velocity_PID.SetSampleTime((int)(TIMER_INTERVAL_MS));
   velocity_PID.SetOutputLimits(-MAX_VELOCITY, MAX_VELOCITY);
   velocity_PID.SetMode(AUTOMATIC);
 }
@@ -407,7 +415,7 @@ void set_velocity(JsonArray arguments)
   }
   r_xdot = velocity_input * MAX_VELOCITY;
   char buffer[40];
-  sprintf(buffer, "Setting velocity: %6f.", r_xdot);
+  //sprintf(buffer, "Setting velocity: %6f.", r_xdot);
   //Serial.println(buffer);
 }
 
@@ -427,7 +435,7 @@ void set_turning_velocity(JsonArray arguments)
   }
   r_theta_dot = theta_dot_input * MAX_PWM;
   char buffer[40];
-  sprintf(buffer, "Setting theta_dot: %6f.", r_theta_dot);
+  //sprintf(buffer, "Setting theta_dot: %6f.", r_theta_dot);
   //Serial.println(buffer);
 } 
 void set_neck_command(JsonArray arguments)
@@ -471,7 +479,7 @@ void set_hips_command(JsonArray arguments)
   }
   char buffer[40];
   sprintf(buffer, "Setting r_hips: %6f.", r_hips);
-  Serial.println(buffer);
+  //Serial.println(buffer);
 }
 
 // Set PID Constants:
@@ -488,7 +496,7 @@ void set_velocity_pid_constants(JsonArray arguments)
   velocity_PID.SetTunings(Kp_xdot,Ki_xdot,Kd_xdot);
   char buffer[100];
   sprintf(buffer, "Setting Kp_xdot = %6f, Ki_xdot = %6f, Kd_xdot = %6f.", Kp_xdot, Ki_xdot, Kd_xdot);
-  Serial.println(buffer);
+  //Serial.println(buffer);
 }
 void set_angle_pid_constants(JsonArray arguments)
 {
@@ -591,7 +599,7 @@ void processReceivedValue(char b, String &command)
   {
     DynamicJsonDocument doc(1024);
     deserializeJson(doc, command);
-    int opcode = doc["cmd"];
+    char opcode = doc["cmd"];
     JsonArray arguments = doc["args"];
     Serial.println("Opc:"+opcode);
     if (arguments != NULL)
@@ -638,7 +646,7 @@ void processReceivedValue(char b, String &command)
     }
     else
     {
-      Serial.println("Opcode or arguments not passed in");
+      //Serial.println("Opcode or arguments not passed in");
     }
     command = "";
   }
@@ -650,13 +658,33 @@ void processReceivedValue(char b, String &command)
   return;
 }
 
-void processReceivedJetsonValue(char b, String &command_2)
+void processSerialCommand(char b, String &command_2)
 {
+  // 
+  // //**************///
+  
+  // Decodes an incoming serial command and applies to call a number of functions.
+  
+  // Command format:
+  // Char 0: Message code
+  //   If 0: Disable
+  //   If 1: Enable - Teleop / standby
+  //     Message type 1: command
+  //   If 2: Enable - Autonomous
+  //   If 3: Set tuning values
+  //     Message type 2: PID input
+  //   Else: Throw error? 
+  
+  //   Command message type:
+  //     Byte 0: message code
+  //     Byte 1-3: 
+     
+  // 
   if (b == DELIMITER)
   {
-    // Do what we want with the data. In this case, print it. 
-    Serial.println("Message "+command_2 +" received on ESP32");
-    // Reset the delimiter for the next message to receive.
+    // Do what we want with the data. 
+    // Decode message:
+
     command_2="";
   }
   else
@@ -819,8 +847,8 @@ void loop()
     portEXIT_CRITICAL(&timerMux0);
 
     // Calculate velocity from encoder readings
-    xdot_l = count_l * 4 * 3.14159265 * WHEEL_RADIUS / (2248.86 * TIMER_INTERVAL_MS / 1000);
-    xdot_r = count_r * 4 * 3.14159265 * WHEEL_RADIUS / (2248.86 * TIMER_INTERVAL_MS / 1000);
+    xdot_l = count_l * 4 * PI * WHEEL_RADIUS / (2248.86 * TIMER_INTERVAL_MS / 1000.);
+    xdot_r = count_r * 4 * PI * WHEEL_RADIUS / (2248.86 * TIMER_INTERVAL_MS / 1000.);
     xdot = ((count_l + count_r) / 2) * 4 * 3.14159265 * WHEEL_RADIUS / (2248.86 * TIMER_INTERVAL_MS / 1000); //(m/s)
     
     // Calculate current hip angles from encoders
@@ -839,22 +867,28 @@ void loop()
     // Print telemetry to serial
     // Serial.print("Motor forward input (dc_pwm):");
     // Serial.print(-1 * u_phi / 4096);
+    Serial.println(">u_phi:"+String(u_phi));
     // Serial.print(", Current forward velocity (m/s):");
+    Serial.println(">x_dot:"+String(xdot));
+    // Serial.println(">r_xdt:"+String(r_xdot));
     // Serial.print(xdot);
     // Serial.print(", Current tilt angle (rad):");
-    // Serial.print(phi);
+    Serial.println(">phi:"+String(phi));
+    Serial.println(">phidot:"+String(phidot));
     // Serial.print(", Tilt angle set point (rad):");
+    Serial.println(">r_phi:"+String(r_phi));
+    
     // Serial.print(r_phi);
     // Serial.print(", Current turning velocity (rad/s):");
     // Serial.print(theta_dot);
     // Serial.print(", Motor turning velocity input:");
-    //Serial.print(u_theta_dot);
+    // Serial.println(">u_thd:"+String(u_theta_dot));
     //Serial.println();
     // Serial.println(">hips:"+String(hips));
     // Serial.println(">r_hips:"+String(r_hips));
     // Serial.println(">u_hips:"+String(u_hips));
     // Serial.println(">u_gamma:"+String(u_gamma));
-    //Serial.println(">r_hips:"+String(r_hips));
+    // Serial.println(">r_hips:"+String(r_hips));
     // Drive motors using output from tilt angle and turning velocity PID loops
     driveWheelMotors(u_phi + u_theta_dot, u_phi - u_theta_dot);
     driveJointMotors(u_hips+u_gamma,u_hips-u_gamma,0); // last term should be u_neck
@@ -873,11 +907,10 @@ void loop()
   {
     char b = Serial.read();
     Serial.print(b);
-    processReceivedValue(b, command_serial);
   }
   else if (Serial2.available())
   {
     char b = Serial2.read();
-    processReceivedJetsonValue(b, command_2);
+    processSerialCommand(b, command_2);
   }
 }
