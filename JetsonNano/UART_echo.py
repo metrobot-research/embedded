@@ -15,13 +15,13 @@ import rospy
 from struct import pack, unpack
 from std_msgs.msg import SensorData, ControllerCommands #TODO: create SensorData and ControllerCommands message types
 
-def floatToString(value: float):
-    val = ""
-    if value < 10:
-        val = "00"
-    elif value < 100:
-        val = "0"
-    return val + (str (round(value, 2)))
+# def floatToString(value: float):
+#     val = ""
+#     if value < 10:
+#         val = "00"
+#     elif value < 100:
+#         val = "0"
+#     return val + (str (round(value, 2)))
 
 def callback(command):
     print("command received: ", command)
