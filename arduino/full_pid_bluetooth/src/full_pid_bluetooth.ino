@@ -8,6 +8,7 @@
 #include <PID_v1.h>
 #include <BluetoothSerial.h>
 #include <ArduinoJson.h>
+#include <cstdlib>
 
 using namespace Eigen;
 using Eigen::Matrix;
@@ -51,6 +52,7 @@ using Eigen::MatrixXd;
 // General PID constants
 #define MAX_VELOCITY 0.5       // Maximum magnitude of velocity PID output
 #define MAX_PWM 4096           // Maximum magnitude of motor controller PID outputs
+#define MAX_PHI 0.5            // Maximum angle command the robot can take, in radians, from 0.
 #define PHI_SETPOINT_RATIO 1.0 // Ratio of setpoint of tilt controller to output of velocity controller
 
 // Time constants
@@ -64,6 +66,7 @@ BluetoothSerial SerialBT;
 String command_BT = "";
 String command_serial = "";
 String command_2 = "";
+char cmdbuffer[16];
 
 // Encoder definitions
 ESP32Encoder encoder_wheel_right; // Right wheel encoder
@@ -106,7 +109,7 @@ double phi_acc = 0; // Tilt calculated by accelerometer
 
 // PID Constants for Phidot
 double phidot = 0;  // Rate of change of phi from gyro only
-double r_phidot = 0;
+double r_phidot = 0; // commanded phidot angle. This should pretty much always be zero (balanced).
 double Kp_phidot = 1;
 double Ki_phidot = 1;
 double Kd_phidot = 0.1;
@@ -156,7 +159,7 @@ double NECK_COMMAND_MIN = 0; // The maximum neck angle that can be commanded
 double NECK_COMMAND_MAX = 0; // The minimum neck angle that can be commanded
 
 PID velocity_PID(&xdot, &u_xdot, &r_xdot, Kp_xdot, Ki_xdot, Kd_xdot, DIRECT);
-PID angle_PID(&phi, &u_phi, &r_phi, Kp_phi, Ki_phi, Kd_phi, DIRECT);
+PID phi_PID(&phi, &u_phi, &r_phi, Kp_phi, Ki_phi, Kd_phi, DIRECT);
 PID phidot_PID(&phidot,&r_phi,&r_phidot, Kp_phidot, Ki_phidot, Kd_phidot, DIRECT);
 PID turning_velocity_PID(&theta_dot, &u_theta_dot, &r_theta_dot, Kp_theta_dot, Ki_theta_dot, Kd_theta_dot, DIRECT);
 PID hips_PID(&hips, &u_hips, &r_hips, Kp_hips, Ki_hips, Kd_hips, DIRECT);
@@ -337,8 +340,8 @@ void driveServos(float u_grasper, float u_neck)
     servo_pwm.setPWM(NECK_SERVO,0,0);
   }
 }
-// Synthesize and filter gyro and accelerometer readings to get accurate angle measurements
 
+// Synthesize and filter gyro and accelerometer readings to get accurate angle measurements
 void getAngles()
 {
   // Read IMU
@@ -367,13 +370,18 @@ void init_velocity_PID()
 }
 
 // Initialize angle PID loop
-void init_angle_PID()
+void init_phi_PID()
 {
-  angle_PID.SetSampleTime(TIMER_INTERVAL_MS);
-  angle_PID.SetOutputLimits(-MAX_PWM, MAX_PWM);
-  angle_PID.SetMode(AUTOMATIC);
+  phi_PID.SetSampleTime(TIMER_INTERVAL_MS);
+  phi_PID.SetOutputLimits(-MAX_PWM, MAX_PWM);
+  phi_PID.SetMode(AUTOMATIC);
 }
-
+void init_phidot_PID()
+{
+  phidot_PID.SetSampleTime(TIMER_INTERVAL_MS);
+  phidot_PID.SetOutputLimits(-MAX_PHI, MAX_PHI);
+  phidot_PID.SetMode(AUTOMATIC);
+}
 // Initialize turning velocity PID loop
 void init_turning_velocity_PID()
 {
@@ -418,7 +426,6 @@ void set_velocity(JsonArray arguments)
   //sprintf(buffer, "Setting velocity: %6f.", r_xdot);
   //Serial.println(buffer);
 }
-
 // Set turning velocity setpoint
 void set_turning_velocity(JsonArray arguments)
 {
@@ -459,7 +466,6 @@ void set_neck_command(JsonArray arguments)
   sprintf(buffer, "Setting r_neck: %6f.", r_neck);
   //Serial.println(buffer);
 }
-
 void set_hips_command(JsonArray arguments)
 {
   if (arguments.size() != 1)
@@ -482,6 +488,7 @@ void set_hips_command(JsonArray arguments)
   //Serial.println(buffer);
 }
 
+
 // Set PID Constants:
 void set_velocity_pid_constants(JsonArray arguments)
 {
@@ -498,7 +505,7 @@ void set_velocity_pid_constants(JsonArray arguments)
   sprintf(buffer, "Setting Kp_xdot = %6f, Ki_xdot = %6f, Kd_xdot = %6f.", Kp_xdot, Ki_xdot, Kd_xdot);
   //Serial.println(buffer);
 }
-void set_angle_pid_constants(JsonArray arguments)
+void set_phi_pid_constants(JsonArray arguments)
 {
   if (arguments.size() != 3)
   {
@@ -508,7 +515,7 @@ void set_angle_pid_constants(JsonArray arguments)
   Kp_phi = arguments[0];
   Ki_phi = arguments[1];
   Kd_phi = arguments[2];
-  angle_PID.SetTunings(Kp_phi,Ki_phi,Kd_phi);
+  phi_PID.SetTunings(Kp_phi,Ki_phi,Kd_phi);
   char buffer[100];
   sprintf(buffer, "Setting Kp_phi = %6f, Ki_phi = %6f, Kd_phi = %6f.", Kp_phi, Ki_phi, Kd_phi);
   Serial.println(buffer);
@@ -577,7 +584,45 @@ void set_neck_pid_constants(JsonArray arguments)
   sprintf(buffer, "Setting Kp_neck = %6f, Ki_neck = %6f, Kd_neck = %6f.", Kp_neck, Ki_neck, Kd_neck);
   Serial.println(buffer);
 }
+// Improved Serial Comms:
+void set_pid_constants(char id, float kp, float ki, float kd){
+  // set the PID constants of the PID loop specified
+  switch(id){
+    case 'v':
+      // velocity tuning
+      Kp_xdot = kp;
+      Ki_xdot = ki;
+      Kd_xdot = kd;
+      velocity_PID.SetTunings(Kp_xdot,Ki_xdot,Kd_xdot);
+      char buffer[100];
+      sprintf(buffer, "Setting Kp_xdot = %6f, Ki_xdot = %6f, Kd_xdot = %6f.", Kp_xdot, Ki_xdot, Kd_xdot);
+    case 'p':
+      // phi tuning
+    case 'w':
+      // wheel (phi) tunings
+      break;
+    case 'q': 
+      // phidot tuning
+    
+    case 't':
+      // theta dot tuning
+    case 'n':
+      // neck tuning
+    case 'h':
+      // height tunings
+      break;
+    case 'g':
+      // gamma tuning
+      break;
+  }
+}
 
+float bytes2float(uint8_t strInput[]){
+  static_assert(sizeof());
+  float f;
+
+
+}
 void processReceivedValue(char b, String &command)
 {
   // Process JSON commands sent over Serial
@@ -616,7 +661,7 @@ void processReceivedValue(char b, String &command)
         set_velocity_pid_constants(arguments);
         break;
       case 3:
-        set_angle_pid_constants(arguments);
+        set_phi_pid_constants(arguments);
         break;
       case 4:
         set_turning_velocity_pid_constants(arguments);
@@ -665,26 +710,59 @@ void processSerialCommand(char b, String &command_2)
   
   // Decodes an incoming serial command and applies to call a number of functions.
   
-  // Command format:
-  // Char 0: Message code
-  //   If 0: Disable
-  //   If 1: Enable - Teleop / standby
-  //     Message type 1: command
-  //   If 2: Enable - Autonomous
-  //   If 3: Set tuning values
-  //     Message type 2: PID input
-  //   Else: Throw error? 
+  //Command format:
+  //  Char 0: Message code
+  //    If 0: Disable
+  //    If 1: Enable - Teleop / standby
+  //      Message type 1: command
+  //    If 2: Enable - Autonomous
+  //    If 3: Set tuning values
+  //      Message type 2: PID input
+  //    Else: Throw error? 
   
-  //   Command message type:
-  //     Byte 0: message code
-  //     Byte 1-3: 
+  //    Command message type:
+  //      Byte 0: message code
+  //      Byte 1-3: 
      
-  // 
+  //    Set Tunings message type:
+  //      Byte 0: message code
+  //      Byte 1: loop to tune
+  //      Byte 2-5: new Kp
+  //      Byte 6-9: new Ki
+  //      Byte 10-13: new Kd
+  //      Byte 14: delimiter
+
   if (b == DELIMITER)
   {
     // Do what we want with the data. 
     // Decode message:
+    char message_type = command_2[0];
+    switch(message_type){
+      case '0': // message is a disable command
+        disable();
+      case '1':
+        // message is an enable type for standby:
+        enable();
+        // process remaining chars into a struct and act on the command
+        // remaining chars:
+        // 
+      case '2':
+        // command is an autonomous enable command
+        // TODO
+      case '3':
+        // Command will set tuning values
 
+        // Remaining data will be: 
+        // cm2[1] = loop_id
+        // cm2[2-5]   = kp
+        // cm2[6-9]   = ki
+        // cm2[10-13] = kd
+        char loop_id = command_2[1];
+        float kp_new = bytes2float((command_2.substring(2,5)));
+        float ki_new = bytes2float((command_2.substring(6,9));
+        float kd_new = bytes2float((command_2.substring(10,13));
+        set_pid_constants(loop_id, kp_new, ki_new, kd_new);
+    }
     command_2="";
   }
   else
@@ -828,7 +906,8 @@ void setup()
   timerAlarmEnable(timer0);                                   // enable
   delay(2000);
 
-  init_angle_PID();
+  init_phi_PID();
+  init_phidot_PID();
   init_velocity_PID();
   init_turning_velocity_PID();
   init_hips_PID();
@@ -859,8 +938,8 @@ void loop()
     // Read in gyro data and compute PID outputs
     getAngles();
     velocity_PID.Compute();
-    r_phi = PHI_SETPOINT_RATIO * u_xdot;
-    angle_PID.Compute();
+    phidot_PID.Compute();
+    phi_PID.Compute();
     turning_velocity_PID.Compute();
     hips_PID.Compute();
 
@@ -910,7 +989,7 @@ void loop()
   }
   else if (Serial2.available())
   {
-    char b = Serial2.read();
-    processSerialCommand(b, command_2);
+    char b = Serial2.readBytesUntil('\n',cmdbuffer,16);
+    processSerialCommand(b, cmdbuffer);
   }
 }
