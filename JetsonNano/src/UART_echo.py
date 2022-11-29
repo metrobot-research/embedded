@@ -15,19 +15,11 @@ import rospy
 from struct import pack, unpack
 from std_msgs.msg import SensorData, ControllerCommands #TODO: create SensorData and ControllerCommands message types
 
-# def floatToString(value: float):
-#     val = ""
-#     if value < 10:
-#         val = "00"
-#     elif value < 100:
-#         val = "0"
-#     return val + (str (round(value, 2)))
-
 def callback(command):
     print("command received: ", command)
     # send commands to esp32
-    commands_to_sensor = command.state + pack('e', command.velocity) + pack('e', command.theta_dot) + pack('e', command.hip_angle) + pack('e', command.lower_neck_angle) + pack('e', command.upper_neck_angle) + pack('B', command.grasper)
-    # commands_to_sensor = command.state + floatToString(command.velocity) + floatToString(theta_dot[0]) + floatToString(theta_dot[1]) + floatToString(command.hip_angle) + floatToString(command.lower_neck_angle) + floatToString(command.upper_neck_angle) + (str (int (round(command.grapser, 0)))) + "\n"
+    # velocity, theta_dot are shorts. hip_angle, lower_neck_angle, upper_neck_angle are unsigned shorts. grasper is an unsigned short. state is a char.
+    commands_to_sensor = pack('h', command.velocity) + pack('h', command.theta_dot) + pack('H', command.hip_angle) + pack('H', command.lower_neck_angle) + pack('H', command.upper_neck_angle) + pack('B', command.grasper) + pack('c', command.state)
     serial_port.write(commands_to_sensor)
 
 def nano_interface():
@@ -36,15 +28,14 @@ def nano_interface():
         if serial_port.in_waiting() > 0:
             data = serial_port.read().decode() # reads bytes from serial port and decodes into unicode (default for python)
             print("I received ", data)
-            accel_x, accel_y, accel_z = unpack('e', data[:2]), unpack('e', data[2:4]), unpack('e', data[4:6])
             # put data into SensorData msg
             sensorData = SensorData()
-            sensorData.acceleration = [unpack('e', data[:2]), unpack('e', data[2:4]), unpack('e', data[4:6])]
-            sensorData.orientation = [unpack('e', data[6:8]), unpack('e', data[8:10]), unpack('e', data[10:12])]
-            sensorData.wheel_speeds = [unpack('e', data[12:14]), unpack('e', data[14:16])]
-            sensorData.hip_angles = [unpack('e', data[16:18]), unpack('e', data[18:20])]
-            sensorData.neck_angle = unpack('e', data[20:22])
-            sensorData.head_angle = unpack('e', data[20:22])
+            sensorData.acceleration = [unpack('h', data[:2]), unpack('h', data[2:4]), unpack('h', data[4:6])]
+            sensorData.orientation = [unpack('h', data[6:8]), unpack('h', data[8:10]), unpack('h', data[10:12])]
+            sensorData.wheel_speeds = [unpack('h', data[12:14]), unpack('h', data[14:16])]
+            sensorData.hip_angles = [unpack('h', data[16:18]), unpack('h', data[18:20])]
+            sensorData.neck_angle = unpack('h', data[20:22])
+            sensorData.head_angle = unpack('h', data[22:24])
         r.sleep()
 
 if __name__ == '__main__':
