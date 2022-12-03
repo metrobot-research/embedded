@@ -1,8 +1,8 @@
-# Install script for directory: /home/cc/ee106a/fa22/class/ee106a-afj/embedded/JetsonNano/src/jetson_nano
+# Install script for directory: /home/metrobot/embedded/JetsonNano/src/jetson_nano
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
-  set(CMAKE_INSTALL_PREFIX "/home/cc/ee106a/fa22/class/ee106a-afj/embedded/JetsonNano/install")
+  set(CMAKE_INSTALL_PREFIX "/home/metrobot/embedded/JetsonNano/install")
 endif()
 string(REGEX REPLACE "/$" "" CMAKE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
 
@@ -38,17 +38,17 @@ if(NOT DEFINED CMAKE_CROSSCOMPILING)
 endif()
 
 if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_COMPONENT)
-  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/pkgconfig" TYPE FILE FILES "/home/cc/ee106a/fa22/class/ee106a-afj/embedded/JetsonNano/build/jetson_nano/catkin_generated/installspace/jetson_nano.pc")
+  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/pkgconfig" TYPE FILE FILES "/home/metrobot/embedded/JetsonNano/build/jetson_nano/catkin_generated/installspace/jetson_nano.pc")
 endif()
 
 if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_COMPONENT)
   file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/share/jetson_nano/cmake" TYPE FILE FILES
-    "/home/cc/ee106a/fa22/class/ee106a-afj/embedded/JetsonNano/build/jetson_nano/catkin_generated/installspace/jetson_nanoConfig.cmake"
-    "/home/cc/ee106a/fa22/class/ee106a-afj/embedded/JetsonNano/build/jetson_nano/catkin_generated/installspace/jetson_nanoConfig-version.cmake"
+    "/home/metrobot/embedded/JetsonNano/build/jetson_nano/catkin_generated/installspace/jetson_nanoConfig.cmake"
+    "/home/metrobot/embedded/JetsonNano/build/jetson_nano/catkin_generated/installspace/jetson_nanoConfig-version.cmake"
     )
 endif()
 
 if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_COMPONENT)
-  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/share/jetson_nano" TYPE FILE FILES "/home/cc/ee106a/fa22/class/ee106a-afj/embedded/JetsonNano/src/jetson_nano/package.xml")
+  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/share/jetson_nano" TYPE FILE FILES "/home/metrobot/embedded/JetsonNano/src/jetson_nano/package.xml")
 endif()
 

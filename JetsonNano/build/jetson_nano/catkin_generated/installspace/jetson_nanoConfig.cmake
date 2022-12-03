@@ -67,14 +67,14 @@ set(jetson_nano_CONFIG_INCLUDED TRUE)
 
 # set variables for source/devel/install prefixes
 if("FALSE" STREQUAL "TRUE")
-  set(jetson_nano_SOURCE_PREFIX /home/cc/ee106a/fa22/class/ee106a-afj/embedded/JetsonNano/src/jetson_nano)
-  set(jetson_nano_DEVEL_PREFIX /home/cc/ee106a/fa22/class/ee106a-afj/embedded/JetsonNano/devel)
+  set(jetson_nano_SOURCE_PREFIX /home/metrobot/embedded/JetsonNano/src/jetson_nano)
+  set(jetson_nano_DEVEL_PREFIX /home/metrobot/embedded/JetsonNano/devel)
   set(jetson_nano_INSTALL_PREFIX "")
   set(jetson_nano_PREFIX ${jetson_nano_DEVEL_PREFIX})
 else()
   set(jetson_nano_SOURCE_PREFIX "")
   set(jetson_nano_DEVEL_PREFIX "")
-  set(jetson_nano_INSTALL_PREFIX /home/cc/ee106a/fa22/class/ee106a-afj/embedded/JetsonNano/install)
+  set(jetson_nano_INSTALL_PREFIX /home/metrobot/embedded/JetsonNano/install)
   set(jetson_nano_PREFIX ${jetson_nano_INSTALL_PREFIX})
 endif()
 
@@ -154,7 +154,7 @@ foreach(library ${libraries})
     set(lib_path "")
     set(lib "${library}-NOTFOUND")
     # since the path where the library is found is returned we have to iterate over the paths manually
-    foreach(path /home/cc/ee106a/fa22/class/ee106a-afj/embedded/JetsonNano/install/lib;/opt/ros/eecsbot_ws/devel/lib;/opt/ros/noetic/lib)
+    foreach(path /home/metrobot/embedded/JetsonNano/install/lib;/opt/ros/melodic/lib)
       find_library(lib ${library}
         PATHS ${path}
         NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
@@ -211,7 +211,7 @@ foreach(depend ${depends})
   _unpack_libraries_with_build_configuration(jetson_nano_LIBRARIES ${jetson_nano_LIBRARIES})
 
   _list_append_unique(jetson_nano_LIBRARY_DIRS ${${jetson_nano_dep}_LIBRARY_DIRS})
-  _list_append_deduplicate(jetson_nano_EXPORTED_TARGETS ${${jetson_nano_dep}_EXPORTED_TARGETS})
+  list(APPEND jetson_nano_EXPORTED_TARGETS ${${jetson_nano_dep}_EXPORTED_TARGETS})
 endforeach()
 
 set(pkg_cfg_extras "")

@@ -16,7 +16,7 @@ from struct import pack, unpack
 from std_msgs.msg import SensorData, ControllerCommands #TODO: create SensorData and ControllerCommands message types
 
 def callback(command):
-    print("command received: ", command)
+    print("data received: ", command)
     # send commands to esp32
     # velocity, theta_dot are shorts. hip_angle, lower_neck_angle, upper_neck_angle are unsigned shorts. grasper is an unsigned short. state is a char.
     commands_to_sensor = pack('h', command.velocity) + pack('h', command.theta_dot) + pack('H', command.hip_angle) + pack('H', command.lower_neck_angle) + pack('H', command.upper_neck_angle) + pack('B', command.grasper) + pack('c', command.state)

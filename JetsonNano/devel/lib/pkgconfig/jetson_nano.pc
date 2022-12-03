@@ -1,4 +1,4 @@
-prefix=/home/cc/ee106a/fa22/class/ee106a-afj/embedded/JetsonNano/devel
+prefix=/home/metrobot/embedded/JetsonNano/devel
 
 Name: jetson_nano
 Description: Description of jetson_nano
