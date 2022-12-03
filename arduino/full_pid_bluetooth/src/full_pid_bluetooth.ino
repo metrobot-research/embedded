@@ -4,15 +4,16 @@
 #include <ESP32Encoder.h>
 #include <math.h>
 #include <cmath>
-#include <ArduinoEigen.h>
+// #include <ArduinoEigen.h>
+#include <BasicLinearAlgebra.h>
 #include <PID_v1.h>
 #include <BluetoothSerial.h>
 #include <ArduinoJson.h>
 #include <cstdlib>
 
-using namespace Eigen;
-using Eigen::Matrix;
-using Eigen::MatrixXd;
+// using Eigen::Matrix;
+// using Eigen::MatrixXd;
+using namespace BLA;
 
 // Check if bluetooth is enabled
 #if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
@@ -55,8 +56,13 @@ using Eigen::MatrixXd;
 #define MAX_PHI 0.5            // Maximum angle command the robot can take, in radians, from 0.
 #define PHI_SETPOINT_RATIO 1.0 // Ratio of setpoint of tilt controller to output of velocity controller
 
+#define HIPS_COMMAND_MIN 0.0 // The maximum hips angle that can be commanded
+#define HIPS_COMMAND_MAX 1.0 // The minimum hips angle that can be commanded
+
 // Time constants
 #define TIMER_INTERVAL_MS 25. // Interval between timer interrupts
+
+#define GET_VARIABLE_NAME(Variable) = #Variable
 
 // Robot state declarator
 volatile bool currently_enabled= false;
@@ -64,9 +70,25 @@ volatile bool currently_enabled= false;
 // Serial controller definitions
 BluetoothSerial SerialBT;
 String command_BT = "";
+String command_BT_new = "";
 String command_serial = "";
-String command_2 = "";
-char cmdbuffer[16];
+
+const unsigned int MAX_COMMAND_LENGTH = 16;
+// Structure for received messages:
+typedef struct received_msg{
+  unsigned short test;
+};
+
+const int received_msg_size = sizeof(received_msg);
+
+typedef union packet{
+  received_msg message;
+  char receivedFromSerial[received_msg_size];
+};
+
+packet latest_command;
+static char fullCommand[MAX_COMMAND_LENGTH];
+static unsigned int serialIndex = 0;
 
 // Encoder definitions
 ESP32Encoder encoder_wheel_right; // Right wheel encoder
@@ -134,9 +156,6 @@ double hips = 0;   // Current hip angle (nominal angle, for both, to specify hei
 double r_hip_angle = 0;   // Current right hip angle
 double l_hip_angle = 0;   // Current left hip angle
 
-double HIPS_COMMAND_MIN = 0; // The maximum hips angle that can be commanded
-double HIPS_COMMAND_MAX = 1; // The minimum hips angle that can be commanded
-
 // PID constants for gamma_body
 double Kp_gamma = 10;
 double Ki_gamma = 1;
@@ -155,8 +174,8 @@ double r_neck = 0; // Commanded neck angle in radians
 double u_neck = 0; // Output of neck angle PID loop. Composes neck motor drive command. 
 double neck = 0;   // Current neck angle (nominal angle, for both, to specify height)
 
-double NECK_COMMAND_MIN = 0; // The maximum neck angle that can be commanded
-double NECK_COMMAND_MAX = 0; // The minimum neck angle that can be commanded
+double NECK_COMMAND_MIN = 0.0; // The maximum neck angle that can be commanded
+double NECK_COMMAND_MAX = 10.0; // The minimum neck angle that can be commanded
 
 PID velocity_PID(&xdot, &u_xdot, &r_xdot, Kp_xdot, Ki_xdot, Kd_xdot, DIRECT);
 PID phi_PID(&phi, &u_phi, &r_phi, Kp_phi, Ki_phi, Kd_phi, DIRECT);
@@ -176,9 +195,9 @@ int timesteps_passed = 0;                 // Interrupts completed since start of
 ICM20948_WE IMU = ICM20948_WE(ICM20948_ADDR);
 
 // Accelerometer definitions
-Vector3f ACC_VERTICAL_VEC; // Vertical vector from accelerometer readings while robot is held upright
-Vector3f acc_vec;          // Current acceleration vector from accelerometer
-Vector3f acc_normal_vec;   // Normal vector to current acceleration and vertical acceleration vectors
+BLA::Matrix<3> ACC_VERTICAL_VEC; // Vertical vector from accelerometer readings while robot is held upright
+BLA::Matrix<3> acc_vec;          // Current acceleration vector from accelerometer
+BLA::Matrix<3> acc_normal_vec;   // Normal vector to current acceleration and vertical acceleration vectors
 
 // dc_pwm definitions
 Adafruit_PWMServoDriver dc_pwm = Adafruit_PWMServoDriver();
@@ -341,6 +360,27 @@ void driveServos(float u_grasper, float u_neck)
   }
 }
 
+BLA::Matrix<3> crossProduct(BLA::Matrix<3> u, BLA::Matrix<3> v){
+  // Return cross product in vector form:
+  BLA::Matrix<3> w;
+  w = { u(1)*v(2)-u(2)*v(1),
+        u(2)*v(0)-u(0)*v(2),
+        u(0)*v(1)-u(1)*v(0)};
+  return w;
+}
+float dotProduct(BLA::Matrix<3> u, BLA::Matrix<3> v){
+  // Return dot product in float form:
+  BLA::Matrix<1> w;
+  w = ~u*v;
+  return w(0);
+}
+BLA::Matrix<3> normalize(BLA::Matrix<3> u){
+  // Normalize a 3x1 column vector:
+  double mag = sqrt(pow(u(0),2)+pow(u(1),2)+pow(u(2),2));
+  BLA::Matrix<3> w = {u(0)/mag, u(1)/mag, u(2)/mag};
+  return w;
+}
+
 // Synthesize and filter gyro and accelerometer readings to get accurate angle measurements
 void getAngles()
 {
@@ -354,8 +394,8 @@ void getAngles()
   theta_dot = gyr.z * TIMER_INTERVAL_MS / 1000. * (PI / 180.);
   phidot = -gyr.y * (PI / 180.); // Angular velocity as detected by gyro, no filtering
   // Calculate tilt angle from accelerometer data
-  acc_vec << acc.x, acc.y, acc.z;
-  phi_acc = atan2((ACC_VERTICAL_VEC.cross(acc_vec)).dot(acc_normal_vec), acc_vec.dot(ACC_VERTICAL_VEC));
+  acc_vec = {acc.x, acc.y, acc.z};
+  phi_acc = atan2(dotProduct((crossProduct(ACC_VERTICAL_VEC,acc_vec)),(acc_normal_vec)), dotProduct(acc_vec,ACC_VERTICAL_VEC));
 
   // Complementary filter
   phi = CF_TIME_CONSTANT * phi + (1 - CF_TIME_CONSTANT) * phi_acc;
@@ -585,44 +625,13 @@ void set_neck_pid_constants(JsonArray arguments)
   Serial.println(buffer);
 }
 // Improved Serial Comms:
-void set_pid_constants(char id, float kp, float ki, float kd){
+void set_pid_constants(PID &loop, float kp, float ki, float kd){
   // set the PID constants of the PID loop specified
-  switch(id){
-    case 'v':
-      // velocity tuning
-      Kp_xdot = kp;
-      Ki_xdot = ki;
-      Kd_xdot = kd;
-      velocity_PID.SetTunings(Kp_xdot,Ki_xdot,Kd_xdot);
-      char buffer[100];
-      sprintf(buffer, "Setting Kp_xdot = %6f, Ki_xdot = %6f, Kd_xdot = %6f.", Kp_xdot, Ki_xdot, Kd_xdot);
-    case 'p':
-      // phi tuning
-    case 'w':
-      // wheel (phi) tunings
-      break;
-    case 'q': 
-      // phidot tuning
-    
-    case 't':
-      // theta dot tuning
-    case 'n':
-      // neck tuning
-    case 'h':
-      // height tunings
-      break;
-    case 'g':
-      // gamma tuning
-      break;
-  }
+  loop.SetTunings(Kp_xdot,Ki_xdot,Kd_xdot);
+  char buffer[100];
+  sprintf(buffer, "Setting Kp= %6f, Ki = %6f, Kd = %6f.", Kp_xdot, Ki_xdot, Kd_xdot);
 }
 
-float bytes2float(uint8_t strInput[]){
-  static_assert(sizeof());
-  float f;
-
-
-}
 void processReceivedValue(char b, String &command)
 {
   // Process JSON commands sent over Serial
@@ -703,12 +712,12 @@ void processReceivedValue(char b, String &command)
   return;
 }
 
-void processSerialCommand(char b, String &command_2)
+void processSerialCommand(char b)
 {
   // 
   // //**************///
   
-  // Decodes an incoming serial command and applies to call a number of functions.
+  // Decodes an incoming serial command and calls a number of functions.
   
   //Command format:
   //  Char 0: Message code
@@ -732,44 +741,55 @@ void processSerialCommand(char b, String &command_2)
   //      Byte 10-13: new Kd
   //      Byte 14: delimiter
 
-  if (b == DELIMITER)
+  if (b != DELIMITER && serialIndex<(MAX_COMMAND_LENGTH-1))
   {
-    // Do what we want with the data. 
-    // Decode message:
-    char message_type = command_2[0];
-    switch(message_type){
-      case '0': // message is a disable command
-        disable();
-      case '1':
-        // message is an enable type for standby:
-        enable();
-        // process remaining chars into a struct and act on the command
-        // remaining chars:
-        // 
-      case '2':
-        // command is an autonomous enable command
-        // TODO
-      case '3':
-        // Command will set tuning values
+    fullCommand[serialIndex] = b;
+    serialIndex++;
+    
+  }
+  else // Full command received
+  {
+    // // Do what we want with the data. 
+    // // Decode message:
+    // char message_type = fullCommand[0];
+    // switch(message_type){
+    //   case '0': // message is a disable command
+    //     disable();
+    //   case '1':
+    //     // message is an enable type for standby:
+    //     enable();
+    //     // process remaining chars into a struct and act on the command
+    //     // remaining chars:
+    //     // 
+    //   case '2':
+    //     // command is an autonomous enable command
+    //     // TODO
+    //   case '3':
+    //     // Command will set tuning values
 
-        // Remaining data will be: 
-        // cm2[1] = loop_id
-        // cm2[2-5]   = kp
-        // cm2[6-9]   = ki
-        // cm2[10-13] = kd
-        char loop_id = command_2[1];
-        float kp_new = bytes2float((command_2.substring(2,5)));
-        float ki_new = bytes2float((command_2.substring(6,9));
-        float kd_new = bytes2float((command_2.substring(10,13));
-        set_pid_constants(loop_id, kp_new, ki_new, kd_new);
-    }
-    command_2="";
+    //     // Remaining data will be: 
+    //     // cm2[1] = loop_id
+    //     // cm2[2-5]   = kp
+    //     // cm2[6-9]   = ki
+    //     // cm2[10-13] = kd
+    //     char loop_id = fullCommand[1];
+    //     float kp_new = bytes2float((fullCommand.substring(2,5)));
+    //     float ki_new = bytes2float((fullCommand.substring(6,9));
+    //     float kd_new = bytes2float((fullCommand.substring(10,13));
+    //     set_pid_constants(loop_id, kp_new, ki_new, kd_new);
+    // }
+    fullCommand[serialIndex]='\0'; // terminate with escape character to make printable string. Do we need to do this? 
+
+    Serial.print("fullCommand:");
+    Serial.println(fullCommand);
+    latest_command.receivedFromSerial[0]=fullCommand[0];
+    latest_command.receivedFromSerial[1]=fullCommand[1];
+
+    Serial.println("Received:"+latest_command.message.test);
+
+    serialIndex=0;
   }
-  else
-  {
-    command_2.concat(b);
-  }
-  Serial2.print("Message sent from ESP32|");
+  // Serial2.print("Message sent from ESP32|");
   return;
 }
 
@@ -837,10 +857,10 @@ void setup()
   xyzFloat acc = IMU.getGValues();
 
   // Set initial accelerometer values
-  ACC_VERTICAL_VEC << 0.20, -0.03, -0.98;
-  acc_vec << acc.x, acc.y, acc.z;
+  ACC_VERTICAL_VEC = {0.20, -0.03, -0.98};
+  acc_vec = {acc.x, acc.y, acc.z};
 
-  acc_normal_vec << (ACC_VERTICAL_VEC.cross(acc_vec)).normalized();
+  acc_normal_vec = normalize(crossProduct(ACC_VERTICAL_VEC,acc_vec));
 
   // Reverse normal vector if needed
   if (acc_normal_vec(1) < 0)
@@ -848,7 +868,7 @@ void setup()
     acc_normal_vec = acc_normal_vec * -1;
   }
 
-  phi = atan2((ACC_VERTICAL_VEC.cross(acc_vec)).dot(acc_normal_vec), acc_vec.dot(ACC_VERTICAL_VEC));
+  phi = atan2(dotProduct(crossProduct(ACC_VERTICAL_VEC,acc_vec),acc_normal_vec), dotProduct(acc_vec,ACC_VERTICAL_VEC));
 
   phi_acc = phi; // Both phi values initially come from accelerometer
 
@@ -914,7 +934,7 @@ void setup()
   init_gamma_PID();
   // init_neck_PID();
 
-  Serial.println();
+  // Serial.println();
 }
 
 void loop()
@@ -946,16 +966,16 @@ void loop()
     // Print telemetry to serial
     // Serial.print("Motor forward input (dc_pwm):");
     // Serial.print(-1 * u_phi / 4096);
-    Serial.println(">u_phi:"+String(u_phi));
+    // Serial.println(">u_phi:"+String(u_phi));
     // Serial.print(", Current forward velocity (m/s):");
-    Serial.println(">x_dot:"+String(xdot));
+    // Serial.println(">x_dot:"+String(xdot));
     // Serial.println(">r_xdt:"+String(r_xdot));
     // Serial.print(xdot);
     // Serial.print(", Current tilt angle (rad):");
-    Serial.println(">phi:"+String(phi));
-    Serial.println(">phidot:"+String(phidot));
+    // Serial.println(">phi:"+String(phi));
+    // Serial.println(">phidot:"+String(phidot));
     // Serial.print(", Tilt angle set point (rad):");
-    Serial.println(">r_phi:"+String(r_phi));
+    // Serial.println(">r_phi:"+String(r_phi));
     
     // Serial.print(r_phi);
     // Serial.print(", Current turning velocity (rad/s):");
@@ -979,17 +999,13 @@ void loop()
   if (SerialBT.available())
   {
     char b = SerialBT.read();
-    SerialBT.print(b);
-    processReceivedValue(b, command_BT);
+    Serial.println("SerialBT received byte:"+b);
+    //processReceivedValue(b, command_BT);
+    processSerialCommand(b);
   } 
-  else if (Serial.available())
+  if (Serial2.available())
   {
-    char b = Serial.read();
-    Serial.print(b);
-  }
-  else if (Serial2.available())
-  {
-    char b = Serial2.readBytesUntil('\n',cmdbuffer,16);
-    processSerialCommand(b, cmdbuffer);
+    byte b = Serial2.read();
+    processSerialCommand(b);
   }
 }

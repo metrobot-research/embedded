@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import pygame, pygame_gui, time, sys
 from pygame.locals import *
-
+import struct
 import subprocess
 import asyncio
 import serial_asyncio
@@ -76,14 +76,14 @@ async def receive(reader):
 
 async def run_controller(writer, input_type):
     global kp_w, ki_w, kd_w, kp_phi, ki_phi, kd_phi, kp_theta_dot, ki_theta_dot, kd_theta_dot, kp_hips, ki_hips, kd_hips, kp_gamma, ki_gamma, kd_gamma, kp_neck, ki_neck, kd_neck, angle1, angle2
-    writer.write(b"Controller connected.\n")
+    writer.write(b'Controller connected.\n')
 
     pygame.init()
     screen = pygame.display.set_mode((800, 600))
     background = pygame.Surface((800, 600))
     background.fill(pygame.Color('#ffffff'))
 
-    manager = pygame_gui.UIManager((800, 1200))
+    manager = pygame_gui.UIManager((900, 1200))
     grid = [[(100 + 120*i, 75 + 80*j) for j in range(7)] for i in range(5)]
 
     vel_kp = pygame_gui.elements.UITextEntryLine(relative_rect=pygame.Rect(grid[0][0], (100, 50)),
@@ -208,6 +208,10 @@ async def run_controller(writer, input_type):
             text='Reset Neck',
             manager=manager)
 
+    send_test = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(grid[2][6], (100, 50)),
+            text='Send test bytes',
+            manager=manager)
+
     enable = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(grid[3][6], (100, 50)),
             text='Enable',
             manager=manager)
@@ -242,8 +246,9 @@ async def run_controller(writer, input_type):
                 writer.write(b'{"cmd":0,"args":[%6f]}\n' % (-FORWARD_SPEED))
                 print("Setting speed: ", -FORWARD_SPEED)
             else:
-                writer.write(b'{"cmd":0,"args":[0]}\n')
-                print("Setting speed: ", 0)
+                # writer.write(b'{"cmd":0,"args":[0]}\n')
+                # print("Setting speed: ", 0)
+                pass
             if keys[pygame.K_a]:
                 writer.write(b'{"cmd":1,"args":[%6f]}\n' % (-TURN_SPEED))
                 print("Setting turn speed", -TURN_SPEED)
@@ -251,8 +256,9 @@ async def run_controller(writer, input_type):
                 writer.write(b'{"cmd":1,"args":[%6f]}\n' % TURN_SPEED)
                 print("Setting turn speed: ", TURN_SPEED)
             else:
-                writer.write(b'{"cmd":1,"args":[0]}\n')
-                print("Setting turn speed: ", 0)
+                # writer.write(b'{"cmd":1,"args":[0]}\n')
+                # print("Setting turn speed: ", 0)
+                pass
             # TODO: Add support for q/z -> change hip angle cmd
             
             # (q,z) increase height and decrease height
@@ -263,22 +269,22 @@ async def run_controller(writer, input_type):
                 writer.write(b'{"cmd":11,"args":[%6f]}\n' % SQUAT_SPEED)
                 print("Setting hip speed: ", SQUAT_SPEED)
             else:
-                writer.write(b'{"cmd":11,"args":[0]}\n')
-                print("Setting hip speed: ", 0)
-            
+                # writer.write(b'{"cmd":11,"args":[0]}\n')
+                # print("Setting hip speed: ", 0)
+                pass
             # TODO: Add support for e/c -> change neck angle cmd
-            '''
-            # (e,c) increase height and decrease height
-            if keys[pygame.K_e]:
-                writer.write(b'{"cmd":10,"args":[%6f]}\n' % (-NECK_SPEED))
-                print("Setting neck speed", -NECK_SPEED)
-            elif keys[pygame.K_z]:
-                writer.write(b'{"cmd":10,"args":[%6f]}\n' % NECK_SPEED)
-                print("Setting neck speed: ", NECK_SPEED)
-            else:
-                writer.write(b'{"cmd":10,"args":[0]}\n')
-                print("Setting neck speed: ", 0)
-            '''
+            # '''
+            # # (e,c) increase height and decrease height
+            # if keys[pygame.K_e]:
+            #     writer.write(b'{"cmd":10,"args":[%6f]}\n' % (-NECK_SPEED))
+            #     print("Setting neck speed", -NECK_SPEED)
+            # elif keys[pygame.K_z]:
+            #     writer.write(b'{"cmd":10,"args":[%6f]}\n' % NECK_SPEED)
+            #     print("Setting neck speed: ", NECK_SPEED)
+            # else:
+            #     writer.write(b'{"cmd":10,"args":[0]}\n')
+            #     print("Setting neck speed: ", 0)
+            # '''
         for event in pygame.event.get():
             if event.type == QUIT:
                 sys.exit()
@@ -362,6 +368,9 @@ async def run_controller(writer, input_type):
                         neck_ki.set_text(str(ki_neck))
                         neck_kd.set_text(str(kd_neck))
                         writer.write(b'{"cmd":9,"args":[%6f, %6f, %6f]}\n' % (kp_neck, ki_neck, kd_neck))
+                    if event.ui_element == send_test:
+                        writer.write(struct.pack('h',42)+b'\n')
+                        print("Sent "+str(struct.pack('<H',42)+b'\n'))
                     if event.ui_element == enable:
                         writer.write(b'{"cmd":5,"args":[]}\n')
                     if event.ui_element == disable:
@@ -382,7 +391,7 @@ async def run_controller(writer, input_type):
 async def open_bluetooth_terminal(port, baudrate, input_type):
     print(port)
     reader, writer = await serial_asyncio.open_serial_connection(url=port, baudrate=baudrate)
-    writer.write(b"connected")
+    # writer.write(b"connected\n")
     receiver = receive(reader)
     controller = run_controller(writer, input_type)
     await asyncio.wait([receiver, controller])
