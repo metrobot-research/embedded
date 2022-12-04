@@ -88,16 +88,19 @@ typedef union receivedPacket{
 
 typedef struct sentMsg{
   float phi;
+  char delimiter;
 };
+
 const int sentMsgSize = sizeof(sentMsg);
+
 typedef union sentPacket{
   sentMsg message;
   char byteArray[sentMsgSize];
 };
 
 
-receivedPacket latest_command;
-sentPacket latest_state;
+static receivedPacket latest_command;
+static sentPacket latest_state;
 static char fullCommand[MAX_COMMAND_LENGTH];
 static unsigned int serialIndex = 0;
 
@@ -806,31 +809,32 @@ void processSerialCommand(char b)
 
 void publishSensorValues()
 {
-// Send sensor values to the Jetson over UART using Serial Library
-  
-/* Inputs
- Acceleration (from the IMU: inertial measurement unit)
- - acc x,y,z
- Gyroscope
- - gyr x,y,z
- State
- - Filtered  Phi_actual
- encoder values:
- - Wheel speed (LW,RW)
- - Hip Angle (LH,RH)
- - Neck Angle (N)
- Servo values:
- 2 values
- - Head Angle
- - Grasper Angle
+  // Send sensor values to the Jetson over UART using Serial Library
+    
+  /* Inputs
+  Acceleration (from the IMU: inertial measurement unit)
+  - acc x,y,z
+  Gyroscope
+  - gyr x,y,z
+  State
+  - Filtered  Phi_actual
+  encoder values:
+  - Wheel speed (LW,RW)
+  - Hip Angle (LH,RH)
+  - Neck Angle (N)
+  Servo values:
+  2 values
+  - Head Angle
+  - Grasper Angle
 
- 13 total
+  13 total
 
- Outputs: 
- Publish over Serial to ROS node listener
-*/
-latest_state.message.phi=phi;
-Serial2.write(latest_state.byteArray);
+  Outputs: 
+  Publish over Serial to ROS node listener
+  */
+  latest_state.message.phi=float(phi);
+  latest_state.message.delimiter=DELIMITER;
+  Serial2.write(latest_state.byteArray);
 
 }
 
@@ -983,7 +987,7 @@ void loop()
     // Serial.println(">r_xdt:"+String(r_xdot));
     // Serial.print(xdot);
     // Serial.print(", Current tilt angle (rad):");
-    // Serial.println(">phi:"+String(phi));
+    Serial.println(">phi:"+String(phi));
     // Serial.println(">phidot:"+String(phidot));
     // Serial.print(", Tilt angle set point (rad):");
     // Serial.println(">r_phi:"+String(r_phi));
@@ -1003,7 +1007,7 @@ void loop()
     driveWheelMotors(u_phi + u_theta_dot, u_phi - u_theta_dot);
     driveJointMotors(u_hips+u_gamma,u_hips-u_gamma,0); // last term should be u_neck
     driveServos(0,0);
-
+    publishSensorValues();
   }
 
   // Read in and process commands from Bluetooth or serial controller
