@@ -44,9 +44,11 @@ def callback(command):
 
 def testing_serial():
     while True:
-        message = pack('>H',42)
+        # message = pack('<HH',42, 32) + b'\n'
+        message = pack('<f', 3.1415926) + b'\n'
         serial_port.write(message)
-        print("Sent: ",message,end='\n')
+        print("Sent: ", message, end='\n')
+        
         time.sleep(2)
 
 if __name__ == '__main__':
