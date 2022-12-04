@@ -741,7 +741,7 @@ void processSerialCommand(char b)
   //      Byte 10-13: new Kd
   //      Byte 14: delimiter
 
-  if (b != DELIMITER && serialIndex<(MAX_COMMAND_LENGTH-1))
+  if (b != DELIMITER && serialIndex<(MAX_COMMAND_LENGTH-1)) // command is not yet finished
   {
     fullCommand[serialIndex] = b;
     serialIndex++;
@@ -832,8 +832,8 @@ void setup()
   // Wait until serial port initialized before progressing
   while (!Serial)
     ;
-  // while (!Serial2)
-  //   ;
+  while (!Serial2)
+     ;
 
   // I2C wire initialization
   Wire.begin();
@@ -1005,7 +1005,7 @@ void loop()
   } 
   if (Serial2.available())
   {
-    byte b = Serial2.read();
+    char b = Serial2.read();
     processSerialCommand(b);
   }
 }
