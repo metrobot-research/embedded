@@ -45,7 +45,6 @@ def callback(command):
 def nano_interface():
     buffer = b''
     while True:
-        t0 = time.time()
         # receive
         if serial_port.in_waiting > 0:
             Abyte = serial_port.read()
@@ -59,7 +58,7 @@ def nano_interface():
         # send
         message = pack('<f', 3.1415926) + b'\n'
         serial_port.write(message)
-        print(time.time() - t0)
+        
 
 def interpret_msg(buffer):
     if(len(buffer) != 4):
