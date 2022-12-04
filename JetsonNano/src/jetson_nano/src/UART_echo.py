@@ -45,15 +45,19 @@ def callback(command):
 def nano_interface():
     buffer = b''
     while True:
-        if serial_port.in_waiting() > 0:
+        # receive
+        if serial_port.in_waiting > 0:
             Abyte = serial_port.read()
-            print("I received ", Abyte)
-            # put data into SensorData msg
+            # print("I received ", Abyte)
             if Abyte == b'\n':
                 interpret_msg(buffer) # TODO
                 buffer = b''
             else:
                 buffer += Abyte
+        
+        # send
+        message = pack('<f', 3.1415926) + b'\n'
+        serial_port.write(message)
 
 def interpret_msg(buffer):
     if(len(buffer) != 4):
