@@ -22,20 +22,42 @@ using namespace BLA;
 
 // Pins and addresses
 #define ICM20948_ADDR 0x69 // IMU I2C address
-#define OCM_1 36
-#define OCM_2 39
-#define OCM_HIP_RIGHT 34      // Right hip motor current sensor
-#define OCM_HIP_LEFT 35       // Left hip motor current sensor
-#define WHEEL_MOTOR_LEFT_A 0  // Left wheel motor pin A
-#define WHEEL_MOTOR_LEFT_B 1  // Left wheel motor pin B
-#define WHEEL_MOTOR_RIGHT_A 2 // Right wheel motor pin A
-#define WHEEL_MOTOR_RIGHT_B 3 // Right wheel motor pin B
-#define HIP_MOTOR_LEFT_A 6    // Left hip motor pin A
-#define HIP_MOTOR_LEFT_B 7    // Left hip motor pin B
-#define HIP_MOTOR_RIGHT_A 4   // Right hip motor pin A
-#define HIP_MOTOR_RIGHT_B 5   // Right hip motor pin B
-#define NECK_MOTOR_A 8        // Neck Angle Motor pin A
-#define NECK_MOTOR_B 9        // Neck Angle Motor pin B
+
+// Motor controller 1 - Rightmost when robot facing forward
+#define WHEEL_RIGHT_A 2 // Right wheel motor pin A
+#define WHEEL_RIGHT_B 3 // Right wheel motor pin B
+#define WHEEL_RIGHT_ENC_A 33// Enc 1A
+#define WHEEL_RIGHT_ENC_B 4 // Enc 1B
+#define WHEEL_RIGHT_OCM 36
+
+// Motor controller 2 - 2nd from stage rightmost
+#define NECK_MOTOR_A 0  // Left wheel motor pin A
+#define NECK_MOTOR_B 1  // Left wheel motor pin B
+#define NECK_MOTOR_ENC_A 5  // Enc 2A
+#define NECK_MOTOR_ENC_B 13 // Enc 2B
+#define NECK_MOTOR_OCM 39
+
+// Motor controller 3 - 3rd from stage rightmost
+#define HIP_RIGHT_A 4   // Right hip motor pin A
+#define HIP_RIGHT_B 5   // Right hip motor pin B
+#define HIP_RIGHT_ENC_A 14  // Enc 3A
+#define HIP_RIGHT_ENC_B 15  // Enc 3B
+#define HIP_RIGHT_OCM 34      // Right hip motor current sensor
+
+// Motor controller 4 - 4th from stage rightmost
+#define HIP_LEFT_A 6    // Left hip motor pin A
+#define HIP_LEFT_B 7    // Left hip motor pin B
+#define HIP_LEFT_ENC_A 18   // Enc 4A
+#define HIP_LEFT_ENC_B 19   // Enc 4B
+#define HIP_LEFT_OCM 35       // Left hip motor current sensor
+
+// Motor controller 5 - Stage Leftmost 
+#define WHEEL_LEFT_A 8        // Neck Angle Motor pin A
+#define WHEEL_LEFT_B 9        // Neck Angle Motor pin B
+#define WHEEL_LEFT_ENC_A 23   // ENC 5A
+#define WHEEL_LEFT_ENC_B 26   // ENC 5B
+
+
 #define NECK_SERVO 12         // Servo_1 on PCB
 #define GRASPER_SERVO 13      // Servo_2 on PCB
 //#define RXD_2 16      //probably unneeded
@@ -73,21 +95,80 @@ String command_BT = "";
 String command_BT_new = "";
 String command_serial = "";
 
-const unsigned int MAX_COMMAND_LENGTH = 16;
+const unsigned int MAX_COMMAND_LENGTH = 24;
 // Structure for received messages:
-typedef struct receivedMsg{
-  float test;
+typedef struct receivedStateCmd{
+  char state;
+  float fwdVelocityCommand;         // Commanded forward velocity 
+  float yawCommand;                 // Commanded angular velocity
+  unsigned short lowerNeckPosition; // Commanded lower neck position  
+  float upperNeckVelocity;          // Commanded upper neck velocity
+  unsigned short hipAngle;          // Commanded hip angle
+  unsigned short grasperAngle;      // Commanded grasper angle
 };
 
-const int receivedMsgSize = sizeof(receivedMsg);
+const int receivedStateCmdSize = sizeof(receivedStateCmd);
 
 typedef union receivedPacket{
-  receivedMsg message;
-  char receivedFromSerial[receivedMsgSize];
+  receivedStateCmd message;
+  char receivedFromSerial[receivedStateCmdSize];
 };
 
+/* Structure for interpreting PID constant change command, for live tuning:
+Contents:
+  - char case
+  - char loopid
+  - double Kp
+  - double Ki
+  - double Kd
+
+*/
+typedef struct receivedPIDCmd{
+  char state;
+  char loopId;
+  float Kp_cmd;
+  float Ki_cmd;
+  float Kd_cmd;
+
+
+};
+
+/* Contents
+  Acceleration (from the IMU: inertial measurement unit)
+  - acc x,y,z
+  Gyroscope
+  - gyr x,y,z
+  State
+  - Filtered  Phi_actual
+  encoder values:
+  - Wheel speed (LW,RW)
+  - Hip Angle (LH,RH)
+  - Neck Angle (N)
+  Servo values:
+  2 values
+  - Head Angle
+  - Grasper Angle
+  */
 typedef struct sentMsg{
-  float phi;
+  
+  float acc_x;
+  float acc_y;
+  float acc_z;
+  
+  float gyr_x;
+  float gyr_y;
+  float gyr_z;
+  
+  float phi;                        // Current robot tilt angle
+  
+  float lw_angvel;                  // Current angular velocity of left wheel
+  float rw_angvel;                  // Current angular velocity of right wheel
+  
+  float lh_ang;                     // Current encoder measurement of left hip angle
+  float rh_ang;                     // Current encoder measurement of left hip angle
+  
+  unsigned short headAngle;         // Current head angle, unsigned short from 0-65535, mappable to actual value
+
   char delimiter;
 };
 
@@ -109,6 +190,7 @@ ESP32Encoder encoder_wheel_right; // Right wheel encoder
 ESP32Encoder encoder_wheel_left;  // Left wheel encoder
 ESP32Encoder encoder_hip_right;   // Right hip motor encoder
 ESP32Encoder encoder_hip_left;    // Left hip motor encoder
+ESP32Encoder encoder_neck;    // Left hip motor encoder
 
 // Wheel Encoder Counts:
 volatile int count_r_total = 0; // Right wheel total encoder count
@@ -269,34 +351,34 @@ void driveWheelMotors(float u_l, float u_r)
   if(currently_enabled){// switch back to currently_enabled when finished with hip motor testing, or false when wheels are disabled
     if (u_l >= 0)
     {
-      dc_pwm.setPin(WHEEL_MOTOR_LEFT_A, u_l, 0);
-      dc_pwm.setPin(WHEEL_MOTOR_LEFT_B, 0, 0);
+      dc_pwm.setPin(WHEEL_LEFT_A, u_l, 0);
+      dc_pwm.setPin(WHEEL_LEFT_B, 0, 0);
     }
     else
     {
-      dc_pwm.setPin(WHEEL_MOTOR_LEFT_A, 0, 0);
-      dc_pwm.setPin(WHEEL_MOTOR_LEFT_B, -u_l, 0);
+      dc_pwm.setPin(WHEEL_LEFT_A, 0, 0);
+      dc_pwm.setPin(WHEEL_LEFT_B, -u_l, 0);
     }
 
     if (u_r >= 0)
     {
-      dc_pwm.setPin(WHEEL_MOTOR_RIGHT_A, 0, 0);
-      dc_pwm.setPin(WHEEL_MOTOR_RIGHT_B, u_r, 0);
+      dc_pwm.setPin(WHEEL_RIGHT_A, 0, 0);
+      dc_pwm.setPin(WHEEL_RIGHT_B, u_r, 0);
     }
     else
     {
-      dc_pwm.setPin(WHEEL_MOTOR_RIGHT_A, -u_r, 0);
-      dc_pwm.setPin(WHEEL_MOTOR_RIGHT_B, 0, 0);
+      dc_pwm.setPin(WHEEL_RIGHT_A, -u_r, 0);
+      dc_pwm.setPin(WHEEL_RIGHT_B, 0, 0);
     }
   }
   else{
     // Zero all motors:
     // Motor 1 (Left):
-    dc_pwm.setPin(WHEEL_MOTOR_LEFT_A, 0, 0);
-    dc_pwm.setPin(WHEEL_MOTOR_LEFT_B, 0, 0);
+    dc_pwm.setPin(WHEEL_LEFT_A, 0, 0);
+    dc_pwm.setPin(WHEEL_LEFT_B, 0, 0);
     // Motor 2 (Right):
-    dc_pwm.setPin(WHEEL_MOTOR_RIGHT_A, 0, 0);
-    dc_pwm.setPin(WHEEL_MOTOR_RIGHT_B, 0, 0);
+    dc_pwm.setPin(WHEEL_RIGHT_A, 0, 0);
+    dc_pwm.setPin(WHEEL_RIGHT_B, 0, 0);
   }
 }
 void driveJointMotors(float u_lh, float u_rh, float u_neck)
@@ -309,24 +391,24 @@ void driveJointMotors(float u_lh, float u_rh, float u_neck)
   if(currently_enabled){
     if (u_lh >= 0)
     {
-      dc_pwm.setPin(HIP_MOTOR_LEFT_A, u_lh, 0);
-      dc_pwm.setPin(HIP_MOTOR_LEFT_B, 0, 0);
+      dc_pwm.setPin(HIP_LEFT_A, u_lh, 0);
+      dc_pwm.setPin(HIP_LEFT_B, 0, 0);
     }
     else
     {
-      dc_pwm.setPin(HIP_MOTOR_LEFT_A, 0, 0);
-      dc_pwm.setPin(HIP_MOTOR_LEFT_B, -u_lh, 0);
+      dc_pwm.setPin(HIP_LEFT_A, 0, 0);
+      dc_pwm.setPin(HIP_LEFT_B, -u_lh, 0);
     }
 
     if (u_rh >= 0)
     {
-      dc_pwm.setPin(HIP_MOTOR_RIGHT_A, 0, 0);
-      dc_pwm.setPin(HIP_MOTOR_RIGHT_B, u_rh, 0);
+      dc_pwm.setPin(HIP_RIGHT_A, 0, 0);
+      dc_pwm.setPin(HIP_RIGHT_B, u_rh, 0);
     }
     else
     {
-      dc_pwm.setPin(WHEEL_MOTOR_RIGHT_A, -u_rh, 0);
-      dc_pwm.setPin(WHEEL_MOTOR_RIGHT_B, 0, 0);
+      dc_pwm.setPin(WHEEL_RIGHT_A, -u_rh, 0);
+      dc_pwm.setPin(WHEEL_RIGHT_B, 0, 0);
     }
 
     if (u_neck >= 0)
@@ -343,11 +425,11 @@ void driveJointMotors(float u_lh, float u_rh, float u_neck)
   else{
     // Zero all motors:
     // Motor 3 (Left Hip):
-    dc_pwm.setPin(HIP_MOTOR_LEFT_A, 0, 0);
-    dc_pwm.setPin(HIP_MOTOR_LEFT_B, 0, 0);
+    dc_pwm.setPin(HIP_LEFT_A, 0, 0);
+    dc_pwm.setPin(HIP_LEFT_B, 0, 0);
     // Motor 4 (Right Hip):
-    dc_pwm.setPin(HIP_MOTOR_RIGHT_A, 0, 0);
-    dc_pwm.setPin(HIP_MOTOR_RIGHT_B, 0, 0);
+    dc_pwm.setPin(HIP_RIGHT_A, 0, 0);
+    dc_pwm.setPin(HIP_RIGHT_B, 0, 0);
     // Motor 5 (Lower Neck):
     dc_pwm.setPin(NECK_MOTOR_A, 0, 0);
     dc_pwm.setPin(NECK_MOTOR_B, 0, 0);
@@ -745,7 +827,7 @@ void processSerialCommand(char b)
   
   //    Command message type:
   //      Byte 0: message code
-  //      Byte 1-3: 
+  //      Byte 1-3: fwd velocity limit (tentatively map 0-65535 --> -1, 1, scale by max, min limits on board)
      
   //    Set Tunings message type:
   //      Byte 0: message code
@@ -792,13 +874,14 @@ void processSerialCommand(char b)
     //     float kd_new = bytes2float((fullCommand.substring(10,13));
     //     set_pid_constants(loop_id, kp_new, ki_new, kd_new);
     // }
-    fullCommand[serialIndex]='\0'; // terminate with escape character to make printable string. Do we need to do this? 
+    fullCommand[serialIndex]='\0'; // terminate with escape character to make printable string. Do we need to do this? Probably not.
 
     //Serial.print("fullCommand:");
     //Serial.println(fullCommand);
-    memcpy(latest_command.receivedFromSerial,fullCommand,receivedMsgSize);
+    memcpy(latest_command.receivedFromSerial,fullCommand,receivedStateCmdSize);
     
     Serial.println("Received:"+String(latest_command.message.test, 6));
+    Serial.println("NumBytes:"+String(serialIndex));
     // Serial.println("Received:"+String(latest_command.message.test2));
 
     serialIndex=0;
@@ -889,15 +972,18 @@ void setup()
 
   // Initialize encoders
   ESP32Encoder::useInternalWeakPullResistors = UP;
-  encoder_wheel_right.attachHalfQuad(33, 4); // ENC 
-  encoder_wheel_left.attachHalfQuad(5, 13); // ENC 2A,B
+  encoder_wheel_right.attachHalfQuad(WHEEL_RIGHT_ENC_A, WHEEL_RIGHT_ENC_B); // ENC 1A,B
+  encoder_wheel_left.attachHalfQuad(WHEEL_LEFT_ENC_A, WHEEL_LEFT_ENC_B); // ENC 2A,B
   encoder_wheel_right.clearCount();
   encoder_wheel_left.clearCount();
 
-  encoder_hip_right.attachHalfQuad(14, 15);
-  encoder_hip_left.attachHalfQuad(18, 19);
+  encoder_hip_right.attachHalfQuad(HIP_RIGHT_ENC_A, HIP_RIGHT_ENC_B); // ENC 3A, 3B
+  encoder_hip_left.attachHalfQuad(HIP_LEFT_ENC_A, HIP_LEFT_ENC_B);  // ENC 4A, 4B
   encoder_hip_right.clearCount();
   encoder_hip_left.clearCount();
+
+  encoder_neck.attachHalfQuad(23, 26);
+  encoder_neck.clearCount();
 
   dc_pwm.begin();
   dc_pwm.setOscillatorFrequency(27000000);
@@ -907,24 +993,24 @@ void setup()
   servo_pwm.setOscillatorFrequency(27000000);
   servo_pwm.setPWMFreq(50);
 
-  pinMode(OCM_1, INPUT);
-  pinMode(OCM_2, INPUT);
-  pinMode(OCM_HIP_LEFT, INPUT);
-  pinMode(OCM_HIP_RIGHT, INPUT);
+  pinMode(WHEEL_RIGHT_OCM, INPUT);
+  pinMode(NECK_MOTOR_OCM, INPUT);
+  pinMode(HIP_LEFT_OCM, INPUT);
+  pinMode(HIP_RIGHT_OCM, INPUT);
 
   // Motor 1 (Left):
-  dc_pwm.setPin(WHEEL_MOTOR_LEFT_A, 0, 0);
-  dc_pwm.setPin(WHEEL_MOTOR_LEFT_B, 0, 0);
+  dc_pwm.setPin(WHEEL_LEFT_A, 0, 0);
+  dc_pwm.setPin(WHEEL_LEFT_B, 0, 0);
   // Motor 2 (Right):
-  dc_pwm.setPin(WHEEL_MOTOR_RIGHT_A, 0, 0);
-  dc_pwm.setPin(WHEEL_MOTOR_RIGHT_B, 0, 0);
+  dc_pwm.setPin(WHEEL_RIGHT_A, 0, 0);
+  dc_pwm.setPin(WHEEL_RIGHT_B, 0, 0);
 
   // Motor 3 (Left Hip):
-  dc_pwm.setPin(HIP_MOTOR_LEFT_A, 0, 0);
-  dc_pwm.setPin(HIP_MOTOR_LEFT_B, 0, 0);
+  dc_pwm.setPin(HIP_LEFT_A, 0, 0);
+  dc_pwm.setPin(HIP_LEFT_B, 0, 0);
   // Motor 4 (Right Hip):
-  dc_pwm.setPin(HIP_MOTOR_RIGHT_A, 0, 0);
-  dc_pwm.setPin(HIP_MOTOR_RIGHT_B, 0, 0);
+  dc_pwm.setPin(HIP_RIGHT_A, 0, 0);
+  dc_pwm.setPin(HIP_RIGHT_B, 0, 0);
 
   // Motor 5 (Lower Neck):
   dc_pwm.setPin(NECK_MOTOR_A, 0, 0);
@@ -987,8 +1073,8 @@ void loop()
     // Serial.println(">r_xdt:"+String(r_xdot));
     // Serial.print(xdot);
     // Serial.print(", Current tilt angle (rad):");
-    Serial.println(">phi:"+String(phi));
-    // Serial.println(">phidot:"+String(phidot));
+    Serial.println(">phi:"+String(phi,6));
+    Serial.println(">phidot:"+String(phidot,6));
     // Serial.print(", Tilt angle set point (rad):");
     // Serial.println(">r_phi:"+String(r_phi));
     
