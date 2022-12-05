@@ -42,6 +42,33 @@ def callback(command):
 #         print("Sent: ",message,end='\n')
 #         r.sleep()
 
+def nano_interface():
+    buffer = b''
+    while True:
+        # receive
+        if serial_port.in_waiting > 0:
+            Abyte = serial_port.read()
+            # print("I received ", Abyte)
+            if Abyte == b'\n':
+                interpret_msg(buffer) # TODO
+                buffer = b''
+            else:
+                buffer += Abyte
+        
+        # send
+        message = pack('<f', 3.1415926) + b'\n'
+        serial_port.write(message)
+        
+
+def interpret_msg(buffer):
+    if(len(buffer) != 4):
+        print("wrong length: ", len(buffer))
+    else:
+        Afloat = unpack('<f', buffer)
+        print("Interpreted msg:", Afloat)
+
+
+
 def testing_serial():
     while True:
         # message = pack('<HH',42, 32) + b'\n'
@@ -69,4 +96,9 @@ if __name__ == '__main__':
     # try:
     #     nano_interface()
     # except rospy.ROSInterruptException: pass
-    testing_serial()
+
+    """serial sending test"""
+    # testing_serial()
+
+    """serial receiving test"""
+    nano_interface()
