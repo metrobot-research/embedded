@@ -23,23 +23,23 @@ using namespace BLA;
 // Pins and addresses
 #define ICM20948_ADDR 0x69 // IMU I2C address
 
-// Motor controller 1 - Rightmost when robot facing forward
-#define WHEEL_RIGHT_A 2 // Right wheel motor pin A
-#define WHEEL_RIGHT_B 3 // Right wheel motor pin B
+// Motor controller 1 - Rightmost when robot facing forward (stage right)
+#define WHEEL_RIGHT_A 2 // Motor 1 pin A
+#define WHEEL_RIGHT_B 3 // Motor 1 pin B
 #define WHEEL_RIGHT_ENC_A 33// Enc 1A
 #define WHEEL_RIGHT_ENC_B 4 // Enc 1B
 #define WHEEL_RIGHT_OCM 36
 
 // Motor controller 2 - 2nd from stage rightmost
-#define NECK_MOTOR_A 0  // Left wheel motor pin A
-#define NECK_MOTOR_B 1  // Left wheel motor pin B
+#define NECK_MOTOR_A 0  // Motor 2 pin A
+#define NECK_MOTOR_B 1  // Motor 2 pin B
 #define NECK_MOTOR_ENC_A 5  // Enc 2A
 #define NECK_MOTOR_ENC_B 13 // Enc 2B
 #define NECK_MOTOR_OCM 39
 
 // Motor controller 3 - 3rd from stage rightmost
-#define HIP_RIGHT_A 4   // Right hip motor pin A
-#define HIP_RIGHT_B 5   // Right hip motor pin B
+#define HIP_RIGHT_A 4   // Motor 3 pin A
+#define HIP_RIGHT_B 5   // Motor 3 pin B
 #define HIP_RIGHT_ENC_A 14  // Enc 3A
 #define HIP_RIGHT_ENC_B 15  // Enc 3B
 #define HIP_RIGHT_OCM 34      // Right hip motor current sensor
@@ -52,8 +52,8 @@ using namespace BLA;
 #define HIP_LEFT_OCM 35       // Left hip motor current sensor
 
 // Motor controller 5 - Stage Leftmost 
-#define WHEEL_LEFT_A 8        // Neck Angle Motor pin A
-#define WHEEL_LEFT_B 9        // Neck Angle Motor pin B
+#define WHEEL_LEFT_A 8        // Motor pin 5A
+#define WHEEL_LEFT_B 9        // Motor pin 5B
 #define WHEEL_LEFT_ENC_A 23   // ENC 5A
 #define WHEEL_LEFT_ENC_B 26   // ENC 5B
 
@@ -99,12 +99,16 @@ const unsigned int MAX_COMMAND_LENGTH = 24;
 // Structure for received messages:
 typedef struct receivedStateCmd{
   char state;
+  uint8_t unusedvalue;
+  unsigned short lowerNeckPosition; // Commanded lower neck position  
+  
   float fwdVelocityCommand;         // Commanded forward velocity 
   float yawCommand;                 // Commanded angular velocity
-  unsigned short lowerNeckPosition; // Commanded lower neck position  
+  
   float upperNeckVelocity;          // Commanded upper neck velocity
   unsigned short hipAngle;          // Commanded hip angle
   unsigned short grasperAngle;      // Commanded grasper angle
+  
 };
 
 const int receivedStateCmdSize = sizeof(receivedStateCmd);
@@ -543,6 +547,7 @@ void init_neck_PID()
   neck_PID.SetOutputLimits(-MAX_PWM, MAX_PWM);
   neck_PID.SetMode(AUTOMATIC);
 }
+
 // Set velocity setpoint
 void set_velocity(JsonArray arguments)
 {
@@ -624,6 +629,26 @@ void set_hips_command(JsonArray arguments)
   //Serial.println(buffer);
 }
 
+void jsonPIDArgsToFloat(JsonArray arguments, double &kp, double &ki, double &kd){
+  // Will set the kp, ki, and kd to be parsed from arguments
+  if (arguments.size() != 3)
+  {
+    Serial.println("Incorrect number of arguments for setting velocity PID constants");
+    return;
+  }
+  kp = arguments[0];
+  ki = arguments[1];
+  kd = arguments[2];
+}
+void jsonPIDArgsToFloat(JsonArray arguments, double &r){
+  // Will set the value of r to the value defined in the arguments[0]
+  if (arguments.size() != 1)
+  {
+    Serial.println("Incorrect number of arguments for setting r");
+    return;
+  }
+  r = arguments[0];
+}
 
 // Set PID Constants:
 void set_velocity_pid_constants(JsonArray arguments)
@@ -728,7 +753,7 @@ void set_pid_constants(PID &loop, float kp, float ki, float kd){
   sprintf(buffer, "Setting Kp= %6f, Ki = %6f, Kd = %6f.", Kp_xdot, Ki_xdot, Kd_xdot);
 }
 
-void processReceivedValue(char b, String &command)
+void processReceivedBTValue(char b, String &command)
 {
   // Process JSON commands sent over Serial
   //
@@ -743,8 +768,8 @@ void processReceivedValue(char b, String &command)
   // 7 - set_hips_pid
   // 8 - set_gamma_pid
   // 9 - set_neck_pid_constants
-  // 10 - set_neck_command
-  // 11 - set_hips_command 
+  // a - set_neck_command
+  // b - set_hips_command 
   if (b == DELIMITER)
   {
     DynamicJsonDocument doc(1024);
@@ -756,40 +781,40 @@ void processReceivedValue(char b, String &command)
     {
       switch (opcode)
       {
-      case 0:
+      case '0':
         set_velocity(arguments);
         break;
-      case 1:
+      case '1':
         set_turning_velocity(arguments);
         break;
-      case 2:
+      case '2': // Set velocity PID constants
         set_velocity_pid_constants(arguments);
         break;
-      case 3:
+      case '3': // Set phi PID constants
         set_phi_pid_constants(arguments);
         break;
-      case 4:
+      case '4': // Set turning velocity PID constants
         set_turning_velocity_pid_constants(arguments);
         break;
-      case 5:
+      case '5': // Enable
         enable();
         break;
-      case 6:
+      case '6': // Disable
         disable();
         break;
-      case 7:
+      case '7': // Set phi PID constants
         set_hips_pid_constants(arguments);
         break;
-      case 8: 
+      case '8': // Set phi PID constants
         set_gamma_pid_constants(arguments);
         break;
-      case 9: 
+      case '9': 
         set_neck_pid_constants(arguments);
         break;
-      case 10:
+      case 'a':
         set_neck_command(arguments);
         break;
-      case 11:
+      case 'b':
         set_hips_command(arguments);
         break;
       }
@@ -880,7 +905,7 @@ void processSerialCommand(char b)
     //Serial.println(fullCommand);
     memcpy(latest_command.receivedFromSerial,fullCommand,receivedStateCmdSize);
     
-    Serial.println("Received:"+String(latest_command.message.test, 6));
+    Serial.println("Received:"+String(latest_command.message.fwdVelocityCommand, 6));
     Serial.println("NumBytes:"+String(serialIndex));
     // Serial.println("Received:"+String(latest_command.message.test2));
 
@@ -1101,8 +1126,8 @@ void loop()
   {
     char b = SerialBT.read();
     Serial.println("SerialBT received byte:"+b);
-    //processReceivedValue(b, command_BT);
-    processSerialCommand(b);
+    processReceivedBTValue(b, command_BT);
+    //processSerialCommand(b);
   } 
   if (Serial2.available())
   {
