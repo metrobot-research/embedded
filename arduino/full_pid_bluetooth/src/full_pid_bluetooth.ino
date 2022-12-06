@@ -92,17 +92,15 @@ volatile bool currently_enabled= false;
 // Serial controller definitions
 BluetoothSerial SerialBT;
 String command_BT = "";
-String command_BT_new = "";
-String command_serial = "";
 
 const unsigned int MAX_COMMAND_LENGTH = 24;
 // Structure for received messages:
 typedef struct receivedStateCmd{
-  char state;
-  uint8_t unusedvalue;
+  char state;                       // Set the robot's state: enabled or disabled
+  char furtherState;                // Not used yet, placeholder so that the message does not have unpredicted end behavior
   unsigned short lowerNeckPosition; // Commanded lower neck position  
   
-  float fwdVelocityCommand;         // Commanded forward velocity 
+  float fwdVelocityCommand;         // Commanded forward velocity
   float yawCommand;                 // Commanded angular velocity
   
   float upperNeckVelocity;          // Commanded upper neck velocity
@@ -170,8 +168,12 @@ typedef struct sentMsg{
   
   float lh_ang;                     // Current encoder measurement of left hip angle
   float rh_ang;                     // Current encoder measurement of left hip angle
+
+  float neck_ang;
   
   unsigned short headAngle;         // Current head angle, unsigned short from 0-65535, mappable to actual value
+
+  unsigned short grasperAngle;      // Current commanded grasper state
 
   char delimiter;
 };
@@ -278,7 +280,7 @@ double NECK_COMMAND_MIN = 0.0; // The maximum neck angle that can be commanded
 double NECK_COMMAND_MAX = 10.0; // The minimum neck angle that can be commanded
 
 PID velocity_PID(&xdot, &u_xdot, &r_xdot, Kp_xdot, Ki_xdot, Kd_xdot, DIRECT);
-PID phi_PID(&phi, &u_phi, &r_phi, Kp_phi, Ki_phi, Kd_phi, DIRECT);
+PID phi_PID(&phi, &u_phi, &r_phi, Kp_phi, Ki_phi, Kd_phi, REVERSE);
 PID phidot_PID(&phidot,&r_phi,&r_phidot, Kp_phidot, Ki_phidot, Kd_phidot, DIRECT);
 PID turning_velocity_PID(&theta_dot, &u_theta_dot, &r_theta_dot, Kp_theta_dot, Ki_theta_dot, Kd_theta_dot, DIRECT);
 PID hips_PID(&hips, &u_hips, &r_hips, Kp_hips, Ki_hips, Kd_hips, DIRECT);
@@ -629,7 +631,7 @@ void set_hips_command(JsonArray arguments)
   //Serial.println(buffer);
 }
 
-void jsonPIDArgsToFloat(JsonArray arguments, double &kp, double &ki, double &kd){
+void jsonArgsToFloat(JsonArray arguments, double &kp, double &ki, double &kd){
   // Will set the kp, ki, and kd to be parsed from arguments
   if (arguments.size() != 3)
   {
@@ -640,7 +642,7 @@ void jsonPIDArgsToFloat(JsonArray arguments, double &kp, double &ki, double &kd)
   ki = arguments[1];
   kd = arguments[2];
 }
-void jsonPIDArgsToFloat(JsonArray arguments, double &r){
+void jsonArgsToFloat(JsonArray arguments, double &r){
   // Will set the value of r to the value defined in the arguments[0]
   if (arguments.size() != 1)
   {
@@ -788,7 +790,10 @@ void processReceivedBTValue(char b, String &command)
         set_turning_velocity(arguments);
         break;
       case '2': // Set velocity PID constants
-        set_velocity_pid_constants(arguments);
+        //set_velocity_pid_constants(arguments);
+        jsonArgsToFloat(arguments, Kp_xdot,Ki_xdot,Kd_xdot);
+        set_pid_constants(velocity_PID,Kp_xdot,Ki_xdot,Kd_xdot);
+        Serial.println("Set xdot PID values to:");
         break;
       case '3': // Set phi PID constants
         set_phi_pid_constants(arguments);
