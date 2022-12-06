@@ -1,0 +1,8 @@
+std_msgs/Int8 state
+std_msgs/Int8 furtherState
+std_msgs/UInt16 lowerNeckPosition
+float32 fwdVelocityCommand
+float32 yawRateCommand
+float32 upperNeckVelocity
+std_msgs/UInt16 hipAngle
+std_msgs/UInt16 grasperAngle
