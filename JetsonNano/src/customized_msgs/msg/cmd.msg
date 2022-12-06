@@ -1,5 +1,5 @@
-std_msgs/Int8 state
-std_msgs/Int8 furtherState
+std_msgs/Char state
+std_msgs/Char furtherState
 std_msgs/UInt16 lowerNeckPosition
 float32 fwdVelocityCommand
 float32 yawRateCommand
