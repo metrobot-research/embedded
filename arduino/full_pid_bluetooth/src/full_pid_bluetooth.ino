@@ -75,7 +75,7 @@ using namespace BLA;
 // General PID constants
 #define MAX_VELOCITY 0.5       // Maximum magnitude of velocity PID output
 #define MAX_PWM 4096           // Maximum magnitude of motor controller PID outputs
-#define MAX_PHI 0.5            // Maximum angle command the robot can take, in radians, from 0.
+#define MAX_PHI 1            // Maximum angle command the robot can take, in radians, from 0.
 #define PHI_SETPOINT_RATIO 1.0 // Ratio of setpoint of tilt controller to output of velocity controller
 
 #define HIPS_COMMAND_MIN 0.0 // The maximum hips angle that can be commanded
@@ -279,9 +279,17 @@ double neck = 0;   // Current neck angle (nominal angle, for both, to specify he
 double NECK_COMMAND_MIN = 0.0; // The maximum neck angle that can be commanded
 double NECK_COMMAND_MAX = 10.0; // The minimum neck angle that can be commanded
 
-PID velocity_PID(&xdot, &u_xdot, &r_xdot, Kp_xdot, Ki_xdot, Kd_xdot, DIRECT);
-PID phi_PID(&phi, &u_phi, &r_phi, Kp_phi, Ki_phi, Kd_phi, REVERSE);
+// PID Loops:
+// Phidot: tracks falling over rate of change to 0. Output: commanded angle for robot to take.
 PID phidot_PID(&phidot,&r_phi,&r_phidot, Kp_phidot, Ki_phidot, Kd_phidot, DIRECT);
+// Phi: commands wheels with u_phi to track the commanded angle which is an output of the above loop.
+PID phi_PID(&phi, &u_phi, &r_phi, Kp_phi, Ki_phi, Kd_phi, DIRECT);
+/* 
+Velocity: commands wheels to have a set velocity. Should have slower response time than other loops to allow 
+for simultaneous balancing and velocity control. Should also probably have negative Kp term & medium-high Ki term 
+to allow for balancing.
+*/
+PID velocity_PID(&xdot, &u_xdot, &r_xdot, Kp_xdot, Ki_xdot, Kd_xdot, DIRECT);
 PID turning_velocity_PID(&theta_dot, &u_theta_dot, &r_theta_dot, Kp_theta_dot, Ki_theta_dot, Kd_theta_dot, DIRECT);
 PID hips_PID(&hips, &u_hips, &r_hips, Kp_hips, Ki_hips, Kd_hips, DIRECT);
 PID gamma_PID(&gamma_body, &u_gamma, &r_gamma, Kp_gamma, Ki_gamma, Kd_gamma, DIRECT);
@@ -750,9 +758,9 @@ void set_neck_pid_constants(JsonArray arguments)
 // Improved Serial Comms:
 void set_pid_constants(PID &loop, float kp, float ki, float kd){
   // set the PID constants of the PID loop specified
-  loop.SetTunings(Kp_xdot,Ki_xdot,Kd_xdot);
+  loop.SetTunings(kp,ki,kd);
   char buffer[100];
-  sprintf(buffer, "Setting Kp= %6f, Ki = %6f, Kd = %6f.", Kp_xdot, Ki_xdot, Kd_xdot);
+  sprintf(buffer, "Setting Kp= %6f, Ki = %6f, Kd = %6f.", kp, ki, kd);
 }
 
 void processReceivedBTValue(char b, String &command)
@@ -778,7 +786,7 @@ void processReceivedBTValue(char b, String &command)
     deserializeJson(doc, command);
     char opcode = doc["cmd"];
     JsonArray arguments = doc["args"];
-    Serial.println("Opc:"+opcode);
+    Serial.println("Opc:"+String(opcode));
     if (arguments != NULL)
     {
       switch (opcode)
@@ -793,13 +801,14 @@ void processReceivedBTValue(char b, String &command)
         //set_velocity_pid_constants(arguments);
         jsonArgsToFloat(arguments, Kp_xdot,Ki_xdot,Kd_xdot);
         set_pid_constants(velocity_PID,Kp_xdot,Ki_xdot,Kd_xdot);
-        Serial.println("Set xdot PID values to:");
         break;
       case '3': // Set phi PID constants
-        set_phi_pid_constants(arguments);
+        jsonArgsToFloat(arguments, Kp_phi,Ki_phi,Kd_phi);
+        set_pid_constants(phi_PID,Kp_phi,Ki_phi,Kd_phi);
         break;
       case '4': // Set turning velocity PID constants
-        set_turning_velocity_pid_constants(arguments);
+        jsonArgsToFloat(arguments, Kp_theta_dot,Ki_theta_dot,Kd_theta_dot);
+        set_pid_constants(turning_velocity_PID,Kp_theta_dot,Ki_theta_dot,Kd_theta_dot);
         break;
       case '5': // Enable
         enable();
@@ -811,7 +820,8 @@ void processReceivedBTValue(char b, String &command)
         set_hips_pid_constants(arguments);
         break;
       case '8': // Set phi PID constants
-        set_gamma_pid_constants(arguments);
+        jsonArgsToFloat(arguments,Kp_phidot,Ki_phidot,Kd_phidot);
+        set_pid_constants(phidot_PID,Kp_phidot,Ki_phidot,Kd_phidot);
         break;
       case '9': 
         set_neck_pid_constants(arguments);
@@ -960,8 +970,8 @@ void setup()
   // Wait until serial port initialized before progressing
   while (!Serial)
     ;
-  while (!Serial2)
-     ;
+  //while (!Serial2)
+  //  ;
 
   // I2C wire initialization
   Wire.begin();
@@ -975,7 +985,7 @@ void setup()
   delay(1000);
 
   // Set IMU zero values and other parameters
-  IMU.setGyrOffsets(-27.5680, -86.3617, -4.2623);
+  IMU.setGyrOffsets(-27.5680, -86.5617, -4.2623); // gyr.y was -86.3617 before 
   IMU.setGyrRange(ICM20948_GYRO_RANGE_250);
   IMU.setGyrDLPF(ICM20948_DLPF_6);
   IMU.setAccRange(ICM20948_ACC_RANGE_2G);
@@ -1104,6 +1114,7 @@ void loop()
     // Serial.print(xdot);
     // Serial.print(", Current tilt angle (rad):");
     Serial.println(">phi:"+String(phi,6));
+    Serial.println(">rphi:"+String(r_phi,6));
     Serial.println(">phidot:"+String(phidot,6));
     // Serial.print(", Tilt angle set point (rad):");
     // Serial.println(">r_phi:"+String(r_phi));
@@ -1130,7 +1141,7 @@ void loop()
   if (SerialBT.available())
   {
     char b = SerialBT.read();
-    Serial.println("SerialBT received byte:"+b);
+    //Serial.println("SerialBT received byte:"+b);
     processReceivedBTValue(b, command_BT);
     //processSerialCommand(b);
   } 
