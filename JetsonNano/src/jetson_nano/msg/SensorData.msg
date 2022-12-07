@@ -1,6 +1,8 @@
 float64[3] acceleration # x y z
 float64[3] orientation # x y z (from gyroscope)
 
+float64 phi
+
 # encoder values
 float64[2] wheel_speeds # left, right
 float64[2] hip_angles # left, right

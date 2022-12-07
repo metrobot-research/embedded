@@ -11,9 +11,9 @@
 
 import time
 import serial
-# import rospy
+import rospy
 from struct import pack, unpack
-# from std_msgs.msg import SensorData, ControllerCommands #TODO: create SensorData and ControllerCommands message types
+from std_msgs.msg import SensorData, ControllerCommands #TODO: create SensorData and ControllerCommands message types
 
 def callback(command):
     print("command received: ", command)
@@ -47,28 +47,35 @@ def nano_interface():
     while True:
         # receive
         if serial_port.in_waiting > 0:
-            Abyte = serial_port.read()
+            abyte = serial_port.read()
             # print("I received ", Abyte)
-            if Abyte == b'\n':
+
+            if abyte == b'\n':
                 interpret_msg(buffer) # TODO
                 buffer = b''
             else:
-                buffer += Abyte
+                buffer += abyte
         
         # send
         message = pack('<f', 3.1415926) + b'\n'
         serial_port.write(message)
-        
 
-def interpret_msg(buffer):
-    if(len(buffer) != 4):
+def interpret_msg(buffer): 
+    if(len(buffer) != 56): 
         print("wrong length: ", len(buffer))
-    else:
-        Afloat = unpack('<f', buffer)
-        print("Interpreted msg:", Afloat)
-
-
-
+        return
+    print("buffer", buffer)
+    val_tuples = unpack('<ffffffffffffHHc', buffer)
+    sensor_msg = SensorData()
+    sensor_msg.acceleration = list(val_tuples[:3])
+    sensor_msg.orientation = list(val_tuples[3:6]) #[unpack('h', data[6:8]), unpack('h', data[8:10]), unpack('h', data[10:12])]
+    sensor_msg.phi = val_tuples[6]
+    sensor_msg.wheel_speeds = list(val_tuples[7:9]) #[unpack('h', data[12:14]), unpack('h', data[14:16])]
+    sensor_msg.hip_angles = list(val_tuples[9:11]) # [unpack('h', data[16:18]), unpack('h', data[18:20])]
+    sensor_msg.neck_angle = val_tuples[11] # unpack('h', data[20:22])
+    sensor_msg.head_angle = val_tuples[12] # unpack('h', data[22:24])
+    rospy.loginfo(sensor_msg)
+    
 def testing_serial():
     while True:
         # message = pack('<HH',42, 32) + b'\n'
@@ -80,7 +87,7 @@ def testing_serial():
 
 if __name__ == '__main__':
     serial_port = serial.Serial( # opens serial port
-        port="/dev/ttyTHS1",
+        port="/dev/cu.SLAB_USBtoUART",
         baudrate=115200,
         bytesize=serial.EIGHTBITS,
         parity=serial.PARITY_NONE,                  
