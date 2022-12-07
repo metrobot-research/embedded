@@ -14,23 +14,23 @@ import serial
 import rospy
 from struct import pack, unpack
 from jetson_nano.msg import SensorData, ControllerCommands #TODO: create SensorData and ControllerCommands message types
+from customized_msgs.msg import cmd
 
 def callback(command):
     print("command received: ", command)
-    # send commands to esp32
+    # send commands to esp32 
     # velocity, theta_dot are shorts. hip_angle, lower_neck_angle, upper_neck_angle are unsigned shorts. grasper is an unsigned short. state is a char.
-    commands_to_sensor = pack('h', command.velocity) + pack('h', command.theta_dot) + pack('H', command.hip_angle) + pack('H', command.lower_neck_angle) + pack('H', command.upper_neck_angle) + pack('B', command.grasper) + pack('c', command.state)
+    commands_to_sensor = pack('<chhHH', command.state, command.velocity, command.theta_dot, command.hipAngle, command.lower_neck_angle, command.upper_neck_vel, command.grasperVel)
     serial_port.write(commands_to_sensor)
 
 def nano_interface(serial_port):
     buffer = b''
-    r = rospy.Rate(10)
+    r = rospy.Rate(20)
     while not rospy.is_shutdown():
         # receive
         if serial_port.in_waiting > 0:
             abyte = serial_port.read()
             # print("I received ", Abyte)
-
             if abyte == b'\n':
                 interpret_msg(buffer)
                 buffer = b''
@@ -69,7 +69,7 @@ if __name__ == '__main__':
     )
 
     rospy.init_node('nano_interface')
-    rospy.Subscriber("controller_commands", ControllerCommands, callback)
+    rospy.Subscriber("controller_commands", cmd, callback)
     pub = rospy.Publisher('sensor_data', SensorData, queue_size=10)
     rospy.on_shutdown(serial_port.close()) # closes the serial port when ROS gets the shutdown signal
     # Check if the node has received a signal to shut down. If not, run the method.
