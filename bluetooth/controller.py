@@ -14,6 +14,8 @@ CONNECTION_TIMEOUT = 10
 FORWARD_SPEED = 0.5
 TURN_SPEED = 0.5
 SQUAT_SPEED = 0.1
+HEAD_SPEED = 0.6
+GRASPER_SPEED = 0.8
 
 CONTROL_DELAY = 100
 
@@ -89,8 +91,17 @@ async def run_controller(writer, input_type):
         kp_theta_dot, ki_theta_dot, kd_theta_dot, \
         kp_hips, ki_hips, kd_hips, \
         kp_gamma, ki_gamma, kd_gamma, \
-        kp_neck, ki_neck, kd_neck, \
-        angle1, angle2
+        kp_neck, ki_neck, kd_neck
+    
+    global reset_neck_cmd, reset_hips_cmd, reset_xdot_cmd, reset_tdot_cmd, reset_grasper_cmd, reset_head_cmd
+    
+    reset_neck_cmd = False
+    reset_hips_cmd = False
+    reset_xdot_cmd = False
+    reset_tdot_cmd = False
+    reset_grasper_cmd = False
+    reset_head_cmd = False
+    
     writer.write(b'Controller connected.\n')
 
     pygame.init()
@@ -275,32 +286,49 @@ async def run_controller(writer, input_type):
                 #writer.write(b'{"cmd":1,"args":[0]}\n')
                 #print("Setting turn speed: ", 0)
                 pass
-            # TODO: Add support for q/z -> change hip angle cmd
-            
+           
             # (q,z) increase height and decrease height
             if keys[pygame.K_q]:
-                writer.write(b'{"cmd":b,"args":[%6f]}\n' % (-SQUAT_SPEED))
+                writer.write(b'{"cmd":11,"args":[%3f]}\n' % (-SQUAT_SPEED))
                 print("Setting squat speed:", -SQUAT_SPEED)
+                reset_hips_cmd = True
             elif keys[pygame.K_z]:
-                writer.write(b'{"cmd":b,"args":[%6f]}\n' % SQUAT_SPEED)
+                writer.write(b'{"cmd":11,"args":[%3f]}\n' % SQUAT_SPEED)
                 print("Setting hip speed: ", SQUAT_SPEED)
-            else:
-                # writer.write(b'{"cmd":11,"args":[0]}\n')
-                # print("Setting hip speed: ", 0)
-                pass
-            # TODO: Add support for e/c -> change neck angle cmd
-            # '''
-            # # (e,c) increase height and decrease height
-            # if keys[pygame.K_e]:
-            #     writer.write(b'{"cmd":10,"args":[%6f]}\n' % (-NECK_SPEED))
-            #     print("Setting neck speed", -NECK_SPEED)
-            # elif keys[pygame.K_z]:
-            #     writer.write(b'{"cmd":10,"args":[%6f]}\n' % NECK_SPEED)
-            #     print("Setting neck speed: ", NECK_SPEED)
-            # else:
-            #     writer.write(b'{"cmd":10,"args":[0]}\n')
-            #     print("Setting neck speed: ", 0)
-            # '''
+                reset_hips_cmd = True
+            elif (reset_hips_cmd):
+                writer.write(b'{"cmd":9,"args":[0]}\n')
+                print("Setting hip speed: ", 0)
+                reset_hips_cmd=False
+
+            # # (e,c) increase/decrease head angle
+            if keys[pygame.K_e]:
+                writer.write(b'{"cmd":10,"args":[%3f]}\n' % (HEAD_SPEED))
+                print("Setting head speed", HEAD_SPEED)
+                reset_head_cmd=True
+            elif keys[pygame.K_c]:
+                writer.write(b'{"cmd":10,"args":[%3f]}\n' % -HEAD_SPEED)
+                print("Setting head speed: ", -HEAD_SPEED)
+                reset_head_cmd=True
+            elif(reset_head_cmd):
+                writer.write(b'{"cmd":10,"args":[0]}\n')
+                print("Setting head speed: ", 0)
+                reset_head_cmd=False
+
+            # (r,f) increase grasper speed 
+            if keys[pygame.K_r]:
+                writer.write(b'{"cmd":12,"args":[%3f]}\n' % (GRASPER_SPEED))
+                print("Setting grasper speed", GRASPER_SPEED)
+                reset_grasper_cmd=True
+            elif keys[pygame.K_f]:
+                writer.write(b'{"cmd":12,"args":[%3f]}\n' % -GRASPER_SPEED)
+                print("Setting grasper speed: ", -GRASPER_SPEED)
+                reset_grasper_cmd=True
+            elif(reset_grasper_cmd):
+                writer.write(b'{"cmd":12,"args":[0]}\n')
+                print("Setting grasper speed: ", 0)
+                reset_grasper_cmd=False
+
         for event in pygame.event.get():
             if event.type == QUIT:
                 sys.exit()
