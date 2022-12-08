@@ -23,7 +23,8 @@ def callback(command):
     # send commands to esp32 
     # velocity, theta_dot are shorts. hip_angle, lower_neck_angle, upper_neck_angle are unsigned shorts. grasper is an unsigned short. state is a char.
     command.neckPosition = 0
-    commands_to_sensor = pack('<ccHfffHH', command.state, command.furtherState, command.neckPosition, command.x_dot, command.t_dot, command.headVelocity, command.hipAngle, command.grasperVelocity)
+    commands_to_sensor = pack('<ccHfffHH', command.state, command.furtherState, command.neckPosition, command.x_dot, command.t_dot, \
+                               command.headVelocity, command.hipAngle, command.grasperVelocity) + b'\n\n'
     serial_port.write(commands_to_sensor)
 
 def nano_interface(serial_port):
