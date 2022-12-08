@@ -24,15 +24,15 @@ using namespace BLA;
 #define ICM20948_ADDR 0x69 // IMU I2C address
 
 // Motor controller 1 - Rightmost when robot facing forward (stage right)
-#define WHEEL_RIGHT_A 2 // Motor 1 pin A
-#define WHEEL_RIGHT_B 3 // Motor 1 pin B
+#define WHEEL_RIGHT_A 0 // Motor 1 pin A
+#define WHEEL_RIGHT_B 1 // Motor 1 pin B
 #define WHEEL_RIGHT_ENC_A 33// Enc 1A
 #define WHEEL_RIGHT_ENC_B 4 // Enc 1B
 #define WHEEL_RIGHT_OCM 36
 
 // Motor controller 2 - 2nd from stage rightmost
-#define NECK_MOTOR_A 0  // Motor 2 pin A
-#define NECK_MOTOR_B 1  // Motor 2 pin B
+#define NECK_MOTOR_A 2  // Motor 2 pin A
+#define NECK_MOTOR_B 3  // Motor 2 pin B
 #define NECK_MOTOR_ENC_A 5  // Enc 2A
 #define NECK_MOTOR_ENC_B 13 // Enc 2B
 #define NECK_MOTOR_OCM 39
@@ -85,6 +85,8 @@ using namespace BLA;
 #define TIMER_INTERVAL_MS 25. // Interval between timer interrupts
 
 #define GET_VARIABLE_NAME(Variable) = #Variable
+
+#pragma region 
 
 // Robot state declarator
 volatile bool currently_enabled= false;
@@ -186,7 +188,6 @@ typedef union sentPacket{
   sentMsg message;
   char byteArray[sentMsgSize];
 };
-
 
 static receivedPacket latest_command;
 static sentPacket latest_state;
@@ -333,6 +334,7 @@ int head_pulse_max = 386; // Calibrated to install
 int head_pulse_min = 100;
 float u_head = 0.5; // current head motor position command, used for velocity control
 float head_vel_cmd = 0;
+#pragma endregion
 
 // Interrupt handler that runs every TIMER_INTERVAL_MS ms
 void IRAM_ATTR timerInterruptHandler()
@@ -951,12 +953,13 @@ void publishSensorValues()
   latest_state.message.lh_ang = float(l_hip_angle);
   latest_state.message.rh_ang = float(r_hip_angle);
   latest_state.message.neck_ang = float(neck_angle);
-  latest_state.message.grasperAngle=short(65535*u_grasper);
-  latest_state.message.headAngle=short(65535*u_head);
+  latest_state.message.grasperAngle=short(65535.*u_grasper);
+  latest_state.message.headAngle=short(65535.*u_head);
   latest_state.message.unused1=' ';
   latest_state.message.unused2=' ';
   latest_state.message.delimiter=DELIMITER;
   latest_state.message.delimiter2=DELIMITER;
+  Serial.println(String(short(65535.*u_head)));
   Serial2.write(latest_state.byteArray, sentMsgSize);
 }
 
@@ -1103,7 +1106,7 @@ void loop()
     getAngles();
     velocity_PID.Compute();
     // phidot_PID.Compute();
-    r_phi = .9*phi + .1*(phi - delta_phi);
+    r_phi = u_xdot;
     phi_PID.Compute();
     turning_velocity_PID.Compute();
     hips_PID.Compute();
@@ -1152,7 +1155,7 @@ void loop()
     // Serial.println(">h_v_cmd:"+String(head_vel_cmd));
     // Serial.println(">g_u:"+String(u_grasper));
     // Serial.println(">g_v_cmd:"+String(grasper_vel_cmd));
-    //publishSensorValues();
+    publishSensorValues();
   }
 
   // Read in and process commands from Bluetooth or serial controller
