@@ -23,7 +23,7 @@ def callback(command):
     # send commands to esp32 
     # velocity, theta_dot are shorts. hip_angle, lower_neck_angle, upper_neck_angle are unsigned shorts. grasper is an unsigned short. state is a char.
     command.neckPosition = 0
-    commands_to_sensor = pack('<ccHfffHH', command.state, command.furtherState, command.x_dot, command.theta_dot, command.hipAngle, command.neckPosition, command.headVelocity, command.grasperVelocity)
+    commands_to_sensor = pack('<ccHfffHH', command.state, command.furtherState, command.neckPosition, command.x_dot, command.t_dot, command.headVelocity, command.hipAngle, command.grasperVelocity)
     serial_port.write(commands_to_sensor)
 
 def nano_interface(serial_port):
@@ -65,8 +65,9 @@ def interpret_msg(buffer):
     sensor_msg.phi = val_tuples[6]
     sensor_msg.wheel_speeds = list(val_tuples[7:9]) 
     sensor_msg.hip_angles = list(val_tuples[9:11]) 
-    sensor_msg.neck_angle = val_tuples[11] / 65535
-    sensor_msg.head_angle = val_tuples[12] / 65535
+    sensor_msg.neck_angle = val_tuples[11]
+    sensor_msg.head_angle = val_tuples[12] / 65535.
+    sensor_msg.grasper_angle = val_tuples[13] / 65535.
     rospy.loginfo(sensor_msg)
     return sensor_msg
     
