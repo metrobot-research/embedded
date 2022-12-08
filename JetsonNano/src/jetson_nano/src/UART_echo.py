@@ -13,30 +13,57 @@ import time
 import serial
 import rospy
 from struct import pack, unpack
-from std_msgs.msg import SensorData, ControllerCommands #TODO: create SensorData and ControllerCommands message types
+from jetson_nano.msg import SensorData, ControllerCommands #TODO: create SensorData and ControllerCommands message types
+from customized_msgs.msg import cmd
 
 def callback(command):
+<<<<<<< HEAD
     print("data received: ", command)
     # send commands to esp32
+=======
+    print("command received: ", command)
+    # send commands to esp32 
+>>>>>>> ef401061472c3428133f97ec2ccb8dcb88f43bb4
     # velocity, theta_dot are shorts. hip_angle, lower_neck_angle, upper_neck_angle are unsigned shorts. grasper is an unsigned short. state is a char.
-    commands_to_sensor = pack('h', command.velocity) + pack('h', command.theta_dot) + pack('H', command.hip_angle) + pack('H', command.lower_neck_angle) + pack('H', command.upper_neck_angle) + pack('B', command.grasper) + pack('c', command.state)
+    command.neckPosition = 0
+    commands_to_sensor = pack('<ccHfffHH', command.state, command.furtherState, command.x_dot, command.theta_dot, command.hipAngle, command.neckPosition, command.headVelocity, command.grasperVelocity)
     serial_port.write(commands_to_sensor)
 
-def nano_interface():
-    r = rospy.Rate(10) # loop runs at 10hz (10 loops / sec)
+def nano_interface(serial_port):
+    pub = rospy.Publisher('sensor_data', SensorData, queue_size=10)
+    buffer = b''
+    r = rospy.Rate(20)
     while not rospy.is_shutdown():
-        if serial_port.in_waiting() > 0:
-            data = serial_port.read().decode() # reads bytes from serial port and decodes into unicode (default for python)
-            print("I received ", data)
-            # put data into SensorData msg
-            sensorData = SensorData()
-            sensorData.acceleration = [unpack('h', data[:2]), unpack('h', data[2:4]), unpack('h', data[4:6])]
-            sensorData.orientation = [unpack('h', data[6:8]), unpack('h', data[8:10]), unpack('h', data[10:12])]
-            sensorData.wheel_speeds = [unpack('h', data[12:14]), unpack('h', data[14:16])]
-            sensorData.hip_angles = [unpack('h', data[16:18]), unpack('h', data[18:20])]
-            sensorData.neck_angle = unpack('h', data[20:22])
-            sensorData.head_angle = unpack('h', data[22:24])
+        # receive
+        if serial_port.in_waiting > 0:
+            abyte = serial_port.read()
+            # print("I received ", Abyte)
+            if abyte == b'\n':
+                sensor_msg = interpret_msg(buffer)
+                if sensor_msg:
+                    pub.publish(sensor_msg)
+                buffer = b''
+            else:
+                buffer += abyte
         r.sleep()
+
+def interpret_msg(buffer): 
+    if(len(buffer) != 56): 
+        print("wrong length: ", len(buffer))
+        return
+    print("buffer", buffer)
+    val_tuples = unpack('<ffffffffffffHHc', buffer)
+    sensor_msg = SensorData()
+    sensor_msg.acceleration = list(val_tuples[:3])
+    sensor_msg.orientation = list(val_tuples[3:6]) 
+    sensor_msg.phi = val_tuples[6]
+    sensor_msg.wheel_speeds = list(val_tuples[7:9]) 
+    sensor_msg.hip_angles = list(val_tuples[9:11]) 
+    sensor_msg.neck_angle = val_tuples[11] 
+    sensor_msg.head_angle = val_tuples[12] 
+    rospy.loginfo(sensor_msg)
+    return sensor_msg
+    
 
 if __name__ == '__main__':
     serial_port = serial.Serial( # opens serial port
@@ -49,10 +76,9 @@ if __name__ == '__main__':
     )
 
     rospy.init_node('nano_interface')
-    rospy.Subscriber("controller_commands", ControllerCommands, callback)
-    pub = rospy.Publisher('sensor_data', SensorData, queue_size=10)
+    rospy.Subscriber("controller_commands", cmd, callback)
     rospy.on_shutdown(serial_port.close()) # closes the serial port when ROS gets the shutdown signal
     # Check if the node has received a signal to shut down. If not, run the method.
     try:
-        nano_interface()
+        nano_interface(serial_port)
     except rospy.ROSInterruptException: pass
