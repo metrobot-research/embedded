@@ -285,7 +285,7 @@ double NECK_COMMAND_MAX = 10.0; // The minimum neck angle that can be commanded
 
 // PID Loops:
 // Phidot: tracks falling over rate of change to 0. Output: commanded angle for robot to take.
-PID phidot_PID(&phidot,&delta_phi,&r_phidot, Kp_phidot, Ki_phidot, Kd_phidot, DIRECT);
+// PID phidot_PID(&phidot,&delta_phi,&r_phidot, Kp_phidot, Ki_phidot, Kd_phidot, DIRECT);
 // Phi: commands wheels with u_phi to track the commanded angle which is an output of the above loop.
 PID phi_PID(&phi, &u_phi, &r_phi, Kp_phi, Ki_phi, Kd_phi, DIRECT);
 /* 
@@ -563,12 +563,12 @@ void init_phi_PID()
   phi_PID.SetOutputLimits(-MAX_PWM, MAX_PWM);
   phi_PID.SetMode(AUTOMATIC);
 }
-void init_phidot_PID()
-{
-  phidot_PID.SetSampleTime(TIMER_INTERVAL_MS);
-  phidot_PID.SetOutputLimits(-MAX_PHI, MAX_PHI);
-  phidot_PID.SetMode(AUTOMATIC);
-}
+// void init_phidot_PID()
+// {
+//   phidot_PID.SetSampleTime(TIMER_INTERVAL_MS);
+//   phidot_PID.SetOutputLimits(-MAX_PHI, MAX_PHI);
+//   phidot_PID.SetMode(AUTOMATIC);
+// }
 // Initialize turning velocity PID loop
 void init_turning_velocity_PID()
 {
@@ -787,7 +787,7 @@ void processReceivedBTValue(char b, String &command)
         break;
       case 8: // Set phidot PID constants
         jsonArgsToFloat(arguments,Kp_phidot,Ki_phidot,Kd_phidot);
-        set_pid_constants(phidot_PID,Kp_phidot,Ki_phidot,Kd_phidot);
+        // set_pid_constants(phidot_PID,Kp_phidot,Ki_phidot,Kd_phidot);
         break;
       case 9: 
         jsonArgsToFloat(arguments,Kp_neck,Ki_neck,Kd_neck);
@@ -1038,7 +1038,7 @@ void setup()
   delay(2000);
 
   init_phi_PID();
-  init_phidot_PID();
+  // init_phidot_PID();
   init_velocity_PID();
   init_turning_velocity_PID();
   init_hips_PID();
@@ -1073,7 +1073,7 @@ void loop()
     
     getAngles();
     velocity_PID.Compute();
-    phidot_PID.Compute();
+    // phidot_PID.Compute();
     r_phi = .9*phi + .1*(phi - delta_phi);
     phi_PID.Compute();
     turning_velocity_PID.Compute();
