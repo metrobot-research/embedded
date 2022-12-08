@@ -231,6 +231,7 @@ double Kp_phi = 12500;
 double Ki_phi = 145000;
 double Kd_phi = 2000;
 
+double delta_phi = 0; // Command that should be added to r_phi
 double r_phi = 0;   // Commanded tilt in radians
 double u_phi = 0;   // Output of tilt PID loop
 double phi = 0;     // Tilt calculated by gyro
@@ -286,7 +287,7 @@ double NECK_COMMAND_MAX = 10.0; // The minimum neck angle that can be commanded
 
 // PID Loops:
 // Phidot: tracks falling over rate of change to 0. Output: commanded angle for robot to take.
-PID phidot_PID(&phidot,&r_phi,&r_phidot, Kp_phidot, Ki_phidot, Kd_phidot, DIRECT);
+PID phidot_PID(&phidot,&delta_phi,&r_phidot, Kp_phidot, Ki_phidot, Kd_phidot, DIRECT);
 // Phi: commands wheels with u_phi to track the commanded angle which is an output of the above loop.
 PID phi_PID(&phi, &u_phi, &r_phi, Kp_phi, Ki_phi, Kd_phi, DIRECT);
 /* 
@@ -328,7 +329,7 @@ float u_grasper = 0.5; // current grasper position command, used for velocity co
 float grasper_vel_cmd = 0;
 
 int pulse_length_head = 0;
-int head_pulse_max = 386; // Untested neck servo! #TODO: Calibrate, these are guessed values
+int head_pulse_max = 386; // Calibrated to install
 int head_pulse_min = 100;
 float u_head = 0.5; // current head motor position command, used for velocity control
 float head_vel_cmd = 0;
@@ -487,7 +488,7 @@ void driveServos(float u_grasper, float u_neck)
   else{
     // Grasper (SRV_2)
     servo_pwm.setPWM(GRASPER_SERVO,0,0); // Hopefully this just leaves free rotation an option! Investigate
-    // Nodding (SRV_1) 
+    // Nodding (SRV_1)
     servo_pwm.setPWM(NECK_SERVO,0,0);
   }
 }
@@ -725,101 +726,6 @@ void jsonArgsToFloat(JsonArray arguments, double &r){
 }
 
 // Set PID Constants:
-void set_velocity_pid_constants(JsonArray arguments)
-{
-  if (arguments.size() != 3)
-  {
-    Serial.println("Incorrect number of arguments for setting velocity PID constants");
-    return;
-  }
-  Kp_xdot = arguments[0];
-  Ki_xdot = arguments[1];
-  Kd_xdot = arguments[2];
-  velocity_PID.SetTunings(Kp_xdot,Ki_xdot,Kd_xdot);
-  char buffer[100];
-  sprintf(buffer, "Setting Kp_xdot = %6f, Ki_xdot = %6f, Kd_xdot = %6f.", Kp_xdot, Ki_xdot, Kd_xdot);
-  //Serial.println(buffer);
-}
-void set_phi_pid_constants(JsonArray arguments)
-{
-  if (arguments.size() != 3)
-  {
-    Serial.println("Incorrect number of arguments for setting angle PID constants");
-    return;
-  }
-  Kp_phi = arguments[0];
-  Ki_phi = arguments[1];
-  Kd_phi = arguments[2];
-  phi_PID.SetTunings(Kp_phi,Ki_phi,Kd_phi);
-  char buffer[100];
-  sprintf(buffer, "Setting Kp_phi = %6f, Ki_phi = %6f, Kd_phi = %6f.", Kp_phi, Ki_phi, Kd_phi);
-  Serial.println(buffer);
-}
-void set_turning_velocity_pid_constants(JsonArray arguments)
-{
-  if (arguments.size() != 3)
-  {
-    Serial.println("Incorrect number of arguments for setting turning velocity PID constants");
-    return;
-  }
-  Kp_theta_dot = arguments[0];
-  Ki_theta_dot = arguments[1];
-  Kd_theta_dot = arguments[2];
-  char buffer[100];
-  turning_velocity_PID.SetTunings(Kp_theta_dot,Ki_theta_dot,Kd_theta_dot);
-
-  sprintf(buffer, "Setting Kp_theta_dot = %6f, Ki_theta_dot = %6f, Kd_theta_dot = %6f.", Kp_theta_dot, Ki_theta_dot, Kd_theta_dot);
-  Serial.println(buffer);
-}
-void set_hips_pid_constants(JsonArray arguments)
-{
-  if (arguments.size() != 3)
-  {
-    Serial.println("Incorrect number of arguments for setting turning velocity PID constants");
-    return;
-  }
-  Kp_hips = arguments[0];
-  Ki_hips = arguments[1];
-  Kd_hips = arguments[2];
-  char buffer[100];
-  hips_PID.SetTunings(Kp_hips,Ki_hips,Kd_hips);
-
-  sprintf(buffer, "Setting Kp_hips = %6f, Ki_hips = %6f, Kd_hips = %6f.", Kp_hips, Ki_hips, Kd_hips);
-  Serial.println(buffer);
-}
-void set_gamma_pid_constants(JsonArray arguments)
-{
-  if (arguments.size() != 3)
-  {
-    Serial.println("Incorrect number of arguments for setting turning velocity PID constants");
-    return;
-  }
-  Kp_gamma = arguments[0];
-  Ki_gamma = arguments[1];
-  Kd_gamma = arguments[2];
-  char buffer[100];
-  gamma_PID.SetTunings(Kp_gamma,Ki_gamma,Kd_gamma);
-
-  sprintf(buffer, "Setting Kp_gamma = %6f, Ki_gamma = %6f, Kd_gamma = %6f.", Kp_gamma, Ki_gamma, Kd_gamma);
-  Serial.println(buffer);
-}
-void set_neck_pid_constants(JsonArray arguments)
-{
-  if (arguments.size() != 3)
-  {
-    Serial.println("Incorrect number of arguments for setting turning velocity PID constants");
-    return;
-  }
-  Kp_neck = arguments[0];
-  Ki_neck = arguments[1];
-  Kd_neck = arguments[2];
-  char buffer[100];
-  neck_PID.SetTunings(Kp_neck,Ki_neck,Kd_neck);
-
-  sprintf(buffer, "Setting Kp_neck = %6f, Ki_neck = %6f, Kd_neck = %6f.", Kp_neck, Ki_neck, Kd_neck);
-  Serial.println(buffer);
-}
-// Improved Serial Comms:
 void set_pid_constants(PID &loop, float kp, float ki, float kd){
   // set the PID constants of the PID loop specified
   loop.SetTunings(kp,ki,kd);
@@ -862,7 +768,6 @@ void processReceivedBTValue(char b, String &command)
         set_turning_velocity(arguments);
         break;
       case 2: // Set velocity PID constants
-        //set_velocity_pid_constants(arguments);
         jsonArgsToFloat(arguments, Kp_xdot,Ki_xdot,Kd_xdot);
         set_pid_constants(velocity_PID,Kp_xdot,Ki_xdot,Kd_xdot);
         break;
@@ -881,14 +786,16 @@ void processReceivedBTValue(char b, String &command)
         disable();
         break;
       case 7: // Set hips PID constants
-        set_hips_pid_constants(arguments);
+        jsonArgsToFloat(arguments,Kp_hips,Ki_hips,Kd_hips);
+        set_pid_constants(hips_PID, Kp_hips,Ki_hips,Kd_hips);
         break;
       case 8: // Set phidot PID constants
         jsonArgsToFloat(arguments,Kp_phidot,Ki_phidot,Kd_phidot);
         set_pid_constants(phidot_PID,Kp_phidot,Ki_phidot,Kd_phidot);
         break;
       case 9: 
-        set_neck_pid_constants(arguments);
+        jsonArgsToFloat(arguments,Kp_neck,Ki_neck,Kd_neck);
+        set_pid_constants(neck_PID,Kp_neck,Ki_neck,Kd_neck);
         break;
       case 10: // set head command (velocity)
         set_head_vel_cmd(arguments);
@@ -1077,7 +984,7 @@ void setup()
   delay(1000);
 
   // Set IMU zero values and other parameters
-  IMU.setGyrOffsets(-27.5680, -87.0617, -4.2623); // gyr.y was -86.3617 before 
+  IMU.setGyrOffsets(-27.5680, -88.0617, -4.2623); // gyr.y was -86.3617 before 
   IMU.setGyrRange(ICM20948_GYRO_RANGE_250);
   IMU.setGyrDLPF(ICM20948_DLPF_6);
   IMU.setAccRange(ICM20948_ACC_RANGE_2G);
@@ -1175,7 +1082,7 @@ void loop()
   if (interrupt_complete){
     // ensuring reset isn't skipped:
     
-    unsigned long timekeeping_0 = millis();
+    unsigned long timekeeping_0 = micros();
     portENTER_CRITICAL(&timerMux0);
     interrupt_complete = false;
     portEXIT_CRITICAL(&timerMux0);
@@ -1196,6 +1103,7 @@ void loop()
     getAngles();
     velocity_PID.Compute();
     phidot_PID.Compute();
+    r_phi = .9*phi + .1*(phi - delta_phi);
     phi_PID.Compute();
     turning_velocity_PID.Compute();
     hips_PID.Compute();
@@ -1212,10 +1120,11 @@ void loop()
     // Serial.println(">head_angle:"+String(getHeadAngle()));
 
     // Serial.print(", Current tilt angle (rad):");
-    // Serial.println(">phi:"+String(phi,4));
-    // Serial.println(">rphi:"+String(r_phi,4));
-    // Serial.println(">phidot:"+String(phidot,4));
-    // Serial.println(">u_phi:"+String(u_phi));
+    Serial.println(">phi:"+String(phi,4));
+    Serial.println(">rphi:"+String(r_phi,4));
+    Serial.println(">delta_phi:"+String(delta_phi,4));
+    Serial.println(">phidot:"+String(phidot,4));
+    Serial.println(">u_phi:"+String(u_phi));
     // Serial.print(", Tilt angle set point (rad):");
     // Serial.println(">r_phi:"+String(r_phi));
     
@@ -1237,13 +1146,13 @@ void loop()
     //driveJointMotors(u_hips+u_gamma,u_hips-u_gamma,0); // last term should be u_neck
     driveServosVelocity(grasper_vel_cmd,head_vel_cmd,u_grasper,u_head);
     driveServos(u_grasper,u_head);
-    unsigned long timekeeping_1 = millis();
-    Serial.println(">loop_time:"+String(timekeeping_1-timekeeping_0));
-    Serial.println(">h_u:"+String(u_head));
-    Serial.println(">h_v_cmd:"+String(head_vel_cmd));
-    Serial.println(">g_u:"+String(u_grasper));
-    Serial.println(">g_v_cmd:"+String(grasper_vel_cmd));
-    publishSensorValues();
+    unsigned long timekeeping_1 = micros();
+    // Serial.println(">loop_time:"+String(timekeeping_1-timekeeping_0,5));
+    // Serial.println(">h_u:"+String(u_head));
+    // Serial.println(">h_v_cmd:"+String(head_vel_cmd));
+    // Serial.println(">g_u:"+String(u_grasper));
+    // Serial.println(">g_v_cmd:"+String(grasper_vel_cmd));
+    //publishSensorValues();
   }
 
   // Read in and process commands from Bluetooth or serial controller
