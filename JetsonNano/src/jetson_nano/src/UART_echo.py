@@ -23,7 +23,36 @@ def callback(command):
     # send commands to esp32 
     # velocity, theta_dot are shorts. hip_angle, lower_neck_angle, upper_neck_angle are unsigned shorts. grasper is an unsigned short. state is a char.
     command.neckPosition = 0
-    commands_to_sensor = pack('<ccHfffHH', command.state, command.furtherState, command.x_dot, command.theta_dot, command.hipAngle, command.neckPosition, command.headVelocity, command.grasperVelocity)
+    # print('1-------')
+    # a = pack('<B', command.state)
+    # print(a)
+    # print('2--------')
+    # a = pack('<B', command.furtherState)
+    # print(a)
+    # print('3----------')
+    # a = pack('<H', command.neckPosition)
+    # print(a)
+    # print('4----------')
+    # a = pack('<f', command.x_dot)
+    # print(a)
+    # print('5----------')
+    # a = pack('<f', command.t_dot)
+    # print(a)
+    # print('6----------')
+    # a = pack('<f', command.headVelocity)
+    # print(a)
+    # print('7----------')
+    # a = pack('<H', command.hipAngle)
+    # print(a)
+    # print('8----------')
+    # a = pack('<H', command.grasperVelocity)
+    # print(a)
+    # print('9---------')
+    # a = pack('<B', ord('\n'))
+    # print(a)
+    # print('10------------')
+    commands_to_sensor = pack('<BBHfffHHBB', command.state, command.furtherState, command.neckPosition, command.x_dot, command.t_dot, \
+                               command.headVelocity, command.hipAngle, command.grasperVelocity, ord(b'\n'), ord(b'\n'))
     serial_port.write(commands_to_sensor)
 
 def nano_interface(serial_port):
@@ -44,7 +73,7 @@ def nano_interface(serial_port):
                     sensor_msg = interpret_msg(buffer)
                     # print("reached here")
                     if sensor_msg:
-                        print(sensor_msg.phi)
+                        # print(sensor_msg.phi)
                         pub.publish(sensor_msg)
                     buffer = b''
             else:
@@ -56,17 +85,17 @@ def interpret_msg(buffer):
     if(len(buffer) != 56): 
         print("wrong length: ", len(buffer))
         return
-    print("buffer", buffer[24:28])
+    # print("buffer", buffer[24:28])
     val_tuples = unpack('<ffffffffffffHHcccc', buffer)
-    print()
     sensor_msg = SensorData()
     sensor_msg.acceleration = list(val_tuples[:3])
     sensor_msg.orientation = list(val_tuples[3:6]) 
     sensor_msg.phi = val_tuples[6]
     sensor_msg.wheel_speeds = list(val_tuples[7:9]) 
     sensor_msg.hip_angles = list(val_tuples[9:11]) 
-    sensor_msg.neck_angle = val_tuples[11] / 65535
-    sensor_msg.head_angle = val_tuples[12] / 65535
+    sensor_msg.neck_angle = val_tuples[11]
+    sensor_msg.head_angle = val_tuples[12] / 65535.
+    sensor_msg.grasper_angle = val_tuples[13] / 65535.
     rospy.loginfo(sensor_msg)
     return sensor_msg
     

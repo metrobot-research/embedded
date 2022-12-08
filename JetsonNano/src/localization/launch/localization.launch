@@ -1,0 +1,136 @@
+<launch>
+    <include file="$(find jetson_nano)/launch/serial_communication.launch"/>
+    
+    <!--visualization-->
+    <arg name="cv_vis" default="false"/>
+    <arg name="rviz_ball_cloud" default="false"/>
+    <arg name="rviz_vels" default="false"/>
+    <arg name="vis_cam_model" default="false"/>
+    <arg name="check_point_cloud" default="false"/>
+    <!--cam params-->
+    <arg name="camera2_color_width"               default="424"/> <!-- 1280*720*6/30Hz, 848*480*6/30/60Hz, 640*360*6/30/60Hz -->
+    <arg name="camera2_color_height"              default="240"/>
+    <arg name="camera2_color_fps"                 default="15"/>
+    <arg name="camera2_filters"              default="decimation,disparity,spatial,temporal"/> <!-- pointcloud,decimation,disparity,spatial,temporal -->
+    <arg name="camera2_clip_distance"             default="-2"/>
+    <!-- HSV Ball Thresholding-->
+    <arg name="H_MIN" default="54"/>
+    <arg name="H_MAX" default="89"/>
+    <arg name="S_MIN" default="80"/>
+    <arg name="S_MAX" default="191"/>
+    <arg name="V_MIN" default="40"/>
+    <arg name="V_MAX" default="256"/>
+    <!-- obj filtering-->
+    <arg name="useMorphOps" default="true"/>
+    <arg name="erode_diam" default="4"/> <!--pix elements smaller than this will be eroded-->
+    <arg name="dilate_diam" default="10"/> <!--pix elements larger than this will be dilated-->
+    <arg name="min_obj_pix_diam" default="10"/> <!-- MIN_OBJECT_AREA = min_obj_pix_diam^2 -->
+    <arg name="max_obj_percentage" default="70"/> <!-- MAX_OBJECT_AREA = max_obj_percentage/100. * img_width * img_height -->
+    <arg name="max_num_objs" default="50"/> <!-- 50 is large enough -->
+    <!-- d435i lin vel estimation -->
+    <arg name="d435i_lin_vel_est_max_his_time" default="0.2"/> <!-- if fps=6Hz, set this to >0.3s(due to -frame_dt), 0.05 will be too noisy -->
+    <!-- ball estimation -->
+    <arg name="gnd_height" default="-0.87"/>  <!--TODO: synchronize wheel center data with dual img msg -->
+    <arg name="ball_est_pred_mode" default="decay"/> <!-- static: not move || uniform: uniform vel always || gravity: physical model considering gravity and gnd bouncing -->
+    <arg name="decay_mode_coeff" default="0.7"/>
+    <arg name="ball_est_max_recent_his_time" default="0.25"/>  <!-- if fps=6Hz, set this to >0.3s(due to -frame_dt) -->
+    <arg name="ball_est_max_lost_time" default="1"/>
+    <arg name="ball_est_noise_overcoming_vel" default="0.2"/>
+    <arg name="ball_est_short_window_time" default="0.1"/> <!-- should > 1/fps -->
+<!--    <arg name="ball_est_max_valid_z_vel" default="20"/> &lt;!&ndash; can only help if there's no distraction &ndash;&gt;-->
+<!--    <arg name="ball_est_max_valid_xy_vel" default="2"/>-->
+    <arg name="ball_est_bounce_lost_coeff" default="0.45"/>
+    <!-- Control -->
+    <!--    head -->
+    <arg name="head_kp" default="0.3"/>
+    <arg name="head_ki" default="0"/>
+    <arg name="head_kd" default="0"/>
+    <arg name="head_kw" default="0"/>
+    <!--    wheel_rot -->
+    <arg name="wheel_rot_kp" default="1"/>
+    <arg name="wheel_rot_ki" default="0"/>
+    <arg name="wheel_rot_kd" default="0"/>
+    <arg name="wheel_rot_kw" default="0"/>
+    <!--    wheel_fwd -->
+    <arg name="wheel_fwd_kp" default="1"/>
+    <arg name="wheel_fwd_ki" default="0"/>
+    <arg name="wheel_fwd_kd" default="0"/>
+    <arg name="wheel_fwd_kw" default="0"/>
+    <!--    execution limits -->
+    <arg name="max_fwd_vel" value="0.2"/>
+    
+
+    <include file="$(find realsense2_camera)/launch/ME206A/rs_d435i_and_t265.launch">
+        <arg name="vis_cam_model" default="$(arg vis_cam_model)"/>
+        <arg name="camera2_color_width"               default="$(arg camera2_color_width)"/>
+        <arg name="camera2_color_height"              default="$(arg camera2_color_height)"/>
+        <arg name="camera2_color_fps"                 default="$(arg camera2_color_fps)"/>
+        <arg name="camera2_filters"              default="$(arg camera2_filters)"/>
+        <arg name="camera2_clip_distance"             default="$(arg camera2_clip_distance)"/>
+    </include>
+
+    <node pkg="localization" type="localization_node" name="localization_node" output="screen">
+        <!--cv vis-->
+        <param name="cv_vis" value="$(arg cv_vis)"/>
+        <param name="rviz_ball_cloud" value="$(arg rviz_ball_cloud)"/>
+        <param name="rviz_vels" value="$(arg rviz_vels)"/>
+        <param name="check_point_cloud" value="$(arg check_point_cloud)"/>
+        <!-- Cam Params-->
+        <param name="camera2_color_width" value="$(arg camera2_color_width)"/>
+        <param name="camera2_color_height" value="$(arg camera2_color_height)"/>
+        <param name="camera2_color_fps" value="$(arg camera2_color_fps)"/>
+        <param name="camera2_clip_distance" value="$(arg camera2_clip_distance)"/>
+        <!-- HSV Ball Thresholding -->
+        <param name="H_MIN" value="$(arg H_MIN)"/>
+        <param name="H_MAX" value="$(arg H_MAX)"/>
+        <param name="S_MIN" value="$(arg S_MIN)"/>
+        <param name="S_MAX" value="$(arg S_MAX)"/>
+        <param name="V_MIN" value="$(arg V_MIN)"/>
+        <param name="V_MAX" value="$(arg V_MAX)"/>
+        <!-- object filtering -->
+        <param name="useMorphOps" value="$(arg useMorphOps)"/>
+        <param name="erode_diam" value="$(arg erode_diam)"/>
+        <param name="dilate_diam" value="$(arg dilate_diam)"/>
+        <param name="max_num_objs" value="$(arg max_num_objs)"/>
+        <param name="min_obj_pix_diam" value="$(arg min_obj_pix_diam)"/>
+        <param name="max_obj_percentage" value="$(arg max_obj_percentage)"/>
+        <!-- d435i lin vel estimation -->
+        <param name="d435i_lin_vel_est_max_his_time" value="$(arg d435i_lin_vel_est_max_his_time)"/>
+        <!-- ball estimation -->
+        <param name="gnd_height" value="$(arg gnd_height)"/> <!--TODO: synchronize wheel center data with dual img msg -->
+        <param name="ball_est_pred_mode" value="$(arg ball_est_pred_mode)"/>
+        <param name="ball_est_max_recent_his_time" value="$(arg ball_est_max_recent_his_time)"/>
+        <param name="ball_est_max_lost_time" value="$(arg ball_est_max_lost_time)"/>
+        <param name="ball_est_noise_overcoming_vel" value="$(arg ball_est_noise_overcoming_vel)"/>
+        <param name="ball_est_short_window_time" value="$(arg ball_est_short_window_time)"/>
+<!--        <param name="ball_est_max_valid_z_vel" value="$(arg ball_est_max_valid_z_vel)"/>-->
+<!--        <param name="ball_est_max_valid_xy_vel" value="$(arg ball_est_max_valid_xy_vel)"/>-->
+        <param name="ball_est_bounce_lost_coeff" value="$(arg ball_est_bounce_lost_coeff)"/>
+        <!-- Control -->
+        <!--    head -->
+        <param name="head_kp" value="$(arg head_kp)"/>
+        <param name="head_ki" value="$(arg head_ki)"/>
+        <param name="head_kd" value="$(arg head_kd)"/>
+        <param name="head_kw" value="$(arg head_kw)"/>
+        <!--    wheel_rot -->
+        <param name="wheel_rot_kp" value="$(arg wheel_rot_kp)"/>
+        <param name="wheel_rot_ki" value="$(arg wheel_rot_ki)"/>
+        <param name="wheel_rot_kd" value="$(arg wheel_rot_kd)"/>
+        <param name="wheel_rot_kw" value="$(arg wheel_rot_kw)"/>
+        <!--    wheel_fwd -->
+        <param name="wheel_fwd_kp" value="$(arg wheel_fwd_kp)"/>
+        <param name="wheel_fwd_ki" value="$(arg wheel_fwd_ki)"/>
+        <param name="wheel_fwd_kd" value="$(arg wheel_fwd_kd)"/>
+        <param name="wheel_fwd_kw" value="$(arg wheel_fwd_kw)"/>
+        <!--    execution limits -->
+        <param name="max_fwd_vel" value="$(arg max_fwd_vel)"/>
+    </node>
+
+    <node pkg="rqt_reconfigure" type="rqt_reconfigure" name="rqt_reconfigure"/>
+
+    <node pkg="dynamic_reconfigure" type="dynparam" name="auto_exp_config" args="set /d435i/rgb_camera enable_auto_exposure true"/>
+<!--    <node pkg="dynamic_reconfigure" type="dynparam" name="set_exp" args="set /d435i/rgb_camera exposure 700"/>-->
+
+ <node pkg="rviz" name="rviz" type="rviz" args="-d $(find localization)/rviz/d435i_and_t265.rviz" output="screen"/>
+
+</launch>
