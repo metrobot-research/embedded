@@ -102,12 +102,12 @@ typedef struct receivedStateCmd{
   char furtherState;                // Not used yet, placeholder so that the message does not have unpredicted end behavior
   unsigned short lowerNeckPosition; // Commanded lower neck position  
   
-  float fwdVelocityCommand;         // Commanded forward velocity
-  float yawCommand;                 // Commanded angular velocity
+  float xdot_cmd;         // Commanded forward velocity
+  float tdot_cmd;                 // Commanded angular velocity
   
   float upperNeckVelocity;          // Commanded upper neck velocity
   unsigned short hipAngle;          // Commanded hip angle
-  unsigned short grasperAngle;      // Commanded grasper angle
+  unsigned short grasperVelocity;      // Commanded grasper angle
   
 };
 
@@ -896,7 +896,7 @@ void processSerialCommand(char b)
     //Serial.println(fullCommand);
     memcpy(latest_command.receivedFromSerial,fullCommand,receivedStateCmdSize);
     
-    Serial.println("Received:"+String(latest_command.message.fwdVelocityCommand, 6));
+    Serial.println("Received:"+String(latest_command.message.xdot_cmd, 6));
     Serial.println("NumBytes:"+String(serialIndex));
     // Serial.println("Received:"+String(latest_command.message.test2));
 
@@ -1142,13 +1142,12 @@ void loop()
     // Serial.println(">u_hips:"+String(u_hips));
     // Serial.println(">u_gamma:"+String(u_gamma));
     // Serial.println(">r_hips:"+String(r_hips));
-    // Drive motors using output from tilt angle and turning velocity PID loops
-    // driveWheelMotors(u_phi + u_theta_dot, u_phi - u_theta_dot);
-
     
+    // Drive motors using output from tilt angle and turning velocity PID loops
+    //driveWheelMotors(u_phi + u_theta_dot, u_phi - u_theta_dot);
     //driveJointMotors(u_hips+u_gamma,u_hips-u_gamma,0); // last term should be u_neck
     driveServosVelocity(grasper_vel_cmd,head_vel_cmd,u_grasper,u_head);
-    driveServos(u_grasper,u_head);
+    //driveServos(u_grasper,u_head);
     unsigned long timekeeping_1 = micros();
     // Serial.println(">loop_time:"+String(timekeeping_1-timekeeping_0,5));
     // Serial.println(">h_u:"+String(u_head));
