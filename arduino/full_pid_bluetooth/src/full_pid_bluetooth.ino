@@ -328,7 +328,7 @@ float u_grasper = 0.5; // current grasper position command, used for velocity co
 float grasper_vel_cmd = 0;
 
 int pulse_length_head = 0;
-int head_pulse_max = 395; // Untested neck servo! #TODO: Calibrate, these are guessed values
+int head_pulse_max = 386; // Untested neck servo! #TODO: Calibrate, these are guessed values
 int head_pulse_min = 100;
 float u_head = 0.5; // current head motor position command, used for velocity control
 float head_vel_cmd = 0;
