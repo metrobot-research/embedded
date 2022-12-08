@@ -220,3 +220,5 @@ $RECYCLE.BIN/
 */devel/
 build/
 devel/
+.idea/
+.vscode/
