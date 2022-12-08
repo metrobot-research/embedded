@@ -131,6 +131,7 @@ endif()
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
   include("/home/metrobot/embedded/JetsonNano/build/gtest/cmake_install.cmake")
+  include("/home/metrobot/embedded/JetsonNano/build/customized_msgs/cmake_install.cmake")
   include("/home/metrobot/embedded/JetsonNano/build/jetson_nano/cmake_install.cmake")
 
 endif()

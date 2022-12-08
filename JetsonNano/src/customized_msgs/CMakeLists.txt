@@ -12,6 +12,7 @@ add_message_files(
         DIRECTORY msg
         FILES
         cmd.msg
+        SensorData.msg
 )
 
 generate_messages(
