@@ -1,2 +1,0 @@
-customized_msgs:jetson_nano
--DCATKIN_DEVEL_PREFIX=/home/metrobot/embedded/JetsonNano/devel -DCMAKE_INSTALL_PREFIX=/home/metrobot/embedded/JetsonNano/install -G Unix Makefiles
