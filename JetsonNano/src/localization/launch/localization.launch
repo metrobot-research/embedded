@@ -3,8 +3,8 @@
     
     <!--visualization-->
     <arg name="cv_vis" default="false"/>
-    <arg name="rviz_ball_cloud" default="true"/>
-    <arg name="rviz_vels" default="true"/>
+    <arg name="rviz_ball_cloud" default="false"/>
+    <arg name="rviz_vels" default="false"/>
     <arg name="vis_cam_model" default="false"/>
     <arg name="check_point_cloud" default="false"/>
     <!--cam params-->
@@ -42,7 +42,7 @@
     <arg name="ball_est_bounce_lost_coeff" default="0.45"/>
     <!-- Control -->
     <!--    head -->
-    <arg name="head_kp" default="1"/>
+    <arg name="head_kp" default="0.3"/>
     <arg name="head_ki" default="0"/>
     <arg name="head_kd" default="0"/>
     <arg name="head_kw" default="0"/>

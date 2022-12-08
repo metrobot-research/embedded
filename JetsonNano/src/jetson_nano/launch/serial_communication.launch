@@ -1,3 +1,3 @@
 <launch>
-    <node package="jetson_nano" type="UART_echo.py" name="UART_echo" output="screen"/>
+    <node pkg="jetson_nano" type="UART_echo.py" name="UART_echo" output="screen"/>
 </launch>

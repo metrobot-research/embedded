@@ -503,9 +503,9 @@ void LocalizationFlow::calcControlCmd(){
     float omg_neck_ball_pitch = d435i_p_d435i_ball_yz.cross(d435i_v_d435iw_ball).x() / pow(d435i_p_d435i_ball_yz.norm(),2) - neck_ang_vel_w_pitch;
 
     float pitch_e = atan2(-d435i_p_d435i_ball.y(), d435i_p_d435i_ball.z());
-//    cmd.headVelocity = omg_neck_ball_pitch + head_controller_pid.generateCmd(cur_rgbd_stamped.time, pitch_e);
-    cmd.headVelocity = head_controller_pid.generateCmd(cur_rgbd_stamped.time, pitch_e);
-//    cout << "pitch_e[deg]: " << pitch_e / M_PI * 180. << ", cmd[deg/s]: " << cmd.headVelocity / M_PI * 180.;
+   cmd.headVelocity = omg_neck_ball_pitch + head_controller_pid.generateCmd(cur_rgbd_stamped.time, pitch_e);
+    // cmd.headVelocity = head_controller_pid.generateCmd(cur_rgbd_stamped.time, pitch_e);
+   cout << "pitch_e[deg]: " << pitch_e / M_PI * 180. << ", cmd[deg/s]: " << cmd.headVelocity / M_PI * 180. << endl;
 //    cout << "omg_neck_ball_pitch[deg/s]: " << omg_neck_ball_pitch / M_PI * 180;
 
     // Wheel rot
@@ -546,7 +546,10 @@ void LocalizationFlow::calcControlCmd(){
     else
         cmd.x_dot = unsaturated_fwd_cmd;
 
-    cout << "x_dot: " << cmd.x_dot << ", t_dot: " << cmd.t_dot << "headVelocity: " << cmd.headVelocity << endl;
+    cmd.state = '0';
+    cmd.furtherState = '0';
+
+    // cout << "x_dot: " << cmd.x_dot << ", t_dot: " << cmd.t_dot << "headVelocity: " << cmd.headVelocity << endl;
 
     cmd_publisher.publish(cmd);
 }
