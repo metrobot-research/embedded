@@ -19,7 +19,7 @@ from customized_msgs.msg import cmd, SensorData
 cnt = 0
 
 def callback(command):
-    print("command received: ", command)
+    # print("command received: ", command)
     # send commands to esp32 
     # velocity, theta_dot are shorts. hip_angle, lower_neck_angle, upper_neck_angle are unsigned shorts. grasper is an unsigned short. state is a char.
     command.neckPosition = 0

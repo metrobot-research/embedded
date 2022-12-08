@@ -174,8 +174,10 @@ typedef struct sentMsg{
   unsigned short headAngle;         // Current head angle, unsigned short from 0-65535, mappable to actual value
 
   unsigned short grasperAngle;      // Current commanded grasper state
-
+  char unused1;
+  char unused2;
   char delimiter;
+  char delimiter2;
 };
 
 const int sentMsgSize = sizeof(sentMsg);
@@ -313,6 +315,7 @@ ICM20948_WE IMU = ICM20948_WE(ICM20948_ADDR);
 // Accelerometer definitions
 BLA::Matrix<3> ACC_VERTICAL_VEC; // Vertical vector from accelerometer readings while robot is held upright
 BLA::Matrix<3> acc_vec;          // Current acceleration vector from accelerometer
+BLA::Matrix<3> gyr_vec;          // Current gyro vector from accelerometer
 BLA::Matrix<3> acc_normal_vec;   // Normal vector to current acceleration and vertical acceleration vectors
 
 // dc_pwm definitions
@@ -325,7 +328,7 @@ float u_grasper = 0.5; // current grasper position command, used for velocity co
 float grasper_vel_cmd = 0;
 
 int pulse_length_head = 0;
-int head_pulse_max = 395; // Untested neck servo! #TODO: Calibrate, these are guessed values
+int head_pulse_max = 386; // Untested neck servo! #TODO: Calibrate, these are guessed values
 int head_pulse_min = 100;
 float u_head = 0.5; // current head motor position command, used for velocity control
 float head_vel_cmd = 0;
@@ -541,6 +544,7 @@ void getAngles()
   phidot = -gyr.y * (PI / 180.); // Angular velocity as detected by gyro, no filtering
   // Calculate tilt angle from accelerometer data
   acc_vec = {acc.x, acc.y, acc.z};
+  gyr_vec = {gyr.x, gyr.y, gyr.z};
   phi_acc = atan2(dotProduct((crossProduct(ACC_VERTICAL_VEC,acc_vec)),(acc_normal_vec)), dotProduct(acc_vec,ACC_VERTICAL_VEC));
 
   // Complementary filter
@@ -998,30 +1002,55 @@ void publishSensorValues()
   // Send sensor values to the Jetson over UART using Serial Library
     
   /* Inputs
-  Acceleration (from the IMU: inertial measurement unit)
-  - acc x,y,z
-  Gyroscope
-  - gyr x,y,z
-  State
-  - Filtered  Phi_actual
-  encoder values:
-  - Wheel speed (LW,RW)
-  - Hip Angle (LH,RH)
-  - Neck Angle (N)
-  Servo values:
-  2 values
-  - Head Angle
-  - Grasper Angle
+    
+  float acc_x;
+  float acc_y;
+  float acc_z;
+  
+  float gyr_x;
+  float gyr_y;
+  float gyr_z;
+  
+  float phi;                        // Current robot tilt angle
+  
+  float lw_angvel;                  // Current angular velocity of left wheel
+  float rw_angvel;                  // Current angular velocity of right wheel
+  
+  float lh_ang;                     // Current encoder measurement of left hip angle
+  float rh_ang;                     // Current encoder measurement of left hip angle
 
-  13 total
+  float neck_ang;
+  
+  unsigned short headAngle;         // Current head angle, unsigned short from 0-65535, mappable to actual value
+
+  unsigned short grasperAngle;      // Current commanded grasper state
+
+  char delimiter;
+
+  15 total, 
 
   Outputs: 
   Publish over Serial to ROS node listener
   */
-  latest_state.message.phi=float(phi);
+  latest_state.message.acc_x = float(acc_vec(0));
+  latest_state.message.acc_y = float(acc_vec(1));
+  latest_state.message.acc_z = float(acc_vec(2));
+  latest_state.message.gyr_x = float(gyr_vec(0));
+  latest_state.message.gyr_y = float(phidot);
+  latest_state.message.gyr_z = float(gyr_vec(2));
+  latest_state.message.phi= float(phi);
+  latest_state.message.lw_angvel = float(xdot_l);
+  latest_state.message.rw_angvel = float(xdot_r);
+  latest_state.message.lh_ang = float(l_hip_angle);
+  latest_state.message.rh_ang = float(r_hip_angle);
+  latest_state.message.neck_ang = float(neck_angle);
+  latest_state.message.grasperAngle=short(65535*u_grasper);
+  latest_state.message.headAngle=short(65535*u_head);
+  latest_state.message.unused1=' ';
+  latest_state.message.unused2=' ';
   latest_state.message.delimiter=DELIMITER;
-  Serial2.write(latest_state.byteArray);
-
+  latest_state.message.delimiter2=DELIMITER;
+  Serial2.write(latest_state.byteArray, sentMsgSize);
 }
 
 void setup()
@@ -1033,8 +1062,8 @@ void setup()
   // Wait until serial port initialized before progressing
   while (!Serial)
     ;
-  //while (!Serial2)
-  //  ;
+  while (!Serial2)
+    ;
 
   // I2C wire initialization
   Wire.begin();
@@ -1214,7 +1243,7 @@ void loop()
     Serial.println(">h_v_cmd:"+String(head_vel_cmd));
     Serial.println(">g_u:"+String(u_grasper));
     Serial.println(">g_v_cmd:"+String(grasper_vel_cmd));
-    //publishSensorValues();
+    publishSensorValues();
   }
 
   // Read in and process commands from Bluetooth or serial controller
