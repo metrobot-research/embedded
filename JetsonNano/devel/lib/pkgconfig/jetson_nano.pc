@@ -1,0 +1,8 @@
+prefix=/home/metrobot/embedded/JetsonNano/devel
+
+Name: jetson_nano
+Description: Description of jetson_nano
+Version: 0.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 
