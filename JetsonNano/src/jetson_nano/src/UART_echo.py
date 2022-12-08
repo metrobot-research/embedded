@@ -17,7 +17,7 @@ from jetson_nano.msg import SensorData, ControllerCommands #TODO: create SensorD
 from customized_msgs.msg import cmd
 
 def callback(command):
-    print("command received: ", command)
+    # print("command received: ", command)
     # send commands to esp32 
     # velocity, theta_dot are shorts. hip_angle, lower_neck_angle, upper_neck_angle are unsigned shorts. grasper is an unsigned short. state is a char.
     command.neckPosition = 0
@@ -54,8 +54,8 @@ def interpret_msg(buffer):
     sensor_msg.phi = val_tuples[6]
     sensor_msg.wheel_speeds = list(val_tuples[7:9]) 
     sensor_msg.hip_angles = list(val_tuples[9:11]) 
-    sensor_msg.neck_angle = val_tuples[11] 
-    sensor_msg.head_angle = val_tuples[12] 
+    sensor_msg.neck_angle = val_tuples[11]
+    sensor_msg.head_angle = val_tuples[12]
     rospy.loginfo(sensor_msg)
     return sensor_msg
     
