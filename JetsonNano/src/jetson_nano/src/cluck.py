@@ -7,7 +7,7 @@ class AudioPlayer:
     def __init__(self):
         # params
         self.open = False
-        self.cluck = AudioSegment.from_file(file="sound.wav", format="wav") # constant
+        self.cluck = AudioSegment.from_file(file="cluck.wav", format="wav") # constant
         self.rate = rospy.Rate(10)
         # subscriber
         rospy.Subscriber("sensor_data", SensorData, self.callback)
