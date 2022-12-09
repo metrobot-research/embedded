@@ -10,8 +10,8 @@
     <!--cam params-->
     <arg name="camera2_color_width"               default="424"/> <!-- 1280*720*6/30Hz, 848*480*6/30/60Hz, 640*360*6/30/60Hz -->
     <arg name="camera2_color_height"              default="240"/>
-    <arg name="camera2_color_fps"                 default="60"/>
-    <arg name="camera2_filters"              default="pointcloud,decimation,disparity,spatial,temporal"/> <!-- pointcloud,decimation,disparity,spatial,temporal -->
+    <arg name="camera2_color_fps"                 default="15"/>
+    <arg name="camera2_filters"              default="decimation,disparity,spatial,temporal"/> <!-- pointcloud,decimation,disparity,spatial,temporal -->
     <arg name="camera2_clip_distance"             default="-2"/>
     <!-- HSV Ball Thresholding-->
     <arg name="H_MIN" default="54"/>
@@ -138,7 +138,7 @@
     <node pkg="rqt_reconfigure" type="rqt_reconfigure" name="rqt_reconfigure"/>
 
     <node pkg="dynamic_reconfigure" type="dynparam" name="auto_exp_config" args="set /d435i/rgb_camera enable_auto_exposure true"/>
-<!--    <node pkg="dynamic_reconfigure" type="dynparam" name="set_exp" args="set /d435i/rgb_camera exposure 900"/>-->
+<!--    <node pkg="dynamic_reconfigure" type="dynparam" name="set_exp" args="set /d435i/rgb_camera exposure 700"/>-->
 
  <node pkg="rviz" name="rviz" type="rviz" args="-d $(find localization)/rviz/d435i_and_t265.rviz" output="screen"/>
 

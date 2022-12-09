@@ -574,9 +574,9 @@ void LocalizationFlow::calcControlCmd(){
 
     float pitch_e = atan2(-d435iCenter_p_d435iCenter_ball.y(), d435iCenter_p_d435iCenter_ball.z());
     cmd.headVelocity = head_controller_fwd_pid.generateCmd(cur_rgbd_stamped.time, pitch_e, omg_neck_ball_pitch);
-//    cout << "pitch_e[deg]: " << pitch_e / M_PI * 180.
-//         << ", pitch_omg[deg/s]: " << omg_neck_ball_pitch / M_PI * 180
-//         << ", pitch_cmd[deg/s]: " << cmd.headVelocity / M_PI * 180. << "\r\n";
+    cout << "pitch_e[deg]: " << pitch_e / M_PI * 180.
+         << ", pitch_omg[deg/s]: " << omg_neck_ball_pitch / M_PI * 180
+         << ", pitch_cmd[deg/s]: " << cmd.headVelocity / M_PI * 180. << "\r\n";
 
     // -----------------------Wheel rot-------------------------------------
     Eigen::Matrix3f R_w_d435i(cur_d435i_ori);
@@ -603,9 +603,9 @@ void LocalizationFlow::calcControlCmd(){
 
     float yaw_e = atan2(d435iwh_p_d435iwh_ball.y(), d435iwh_p_d435iwh_ball.x());
     cmd.t_dot = wheel_rot_controller_fwd_pid.generateCmd(cur_rgbd_stamped.time, yaw_e, omg_d435iW_ball_yaw);
-//    cout << "yaw_e[deg]: " << yaw_e / M_PI * 180.
-//         << ", yaw_omg[deg/s]: " << omg_d435iW_ball_yaw / M_PI * 180
-//         << ", yaw_cmd[deg/s]: " << cmd.t_dot / M_PI * 180. << "\r\n";
+    cout << "yaw_e[deg]: " << yaw_e / M_PI * 180.
+         << ", yaw_omg[deg/s]: " << omg_d435iW_ball_yaw / M_PI * 180
+         << ", yaw_cmd[deg/s]: " << cmd.t_dot / M_PI * 180. << "\r\n";
 
     // ------------------------ Wheel fwd ------------------------------
     float fwd_e = d435iwh_p_d435iwh_ball.x() - target_dis;
