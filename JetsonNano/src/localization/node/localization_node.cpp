@@ -27,10 +27,10 @@ int main(int argc, char *argv[]){
 //    LOG(INFO) << "localization_node/screen: " << screen;
 
     // ncurse non-blocking keyboard input
-    initscr();
-    cbreak();
-    noecho();
-    nodelay(stdscr, TRUE);
+//    initscr();
+//    cbreak();
+//    noecho();
+//    nodelay(stdscr, TRUE);
 
     std::shared_ptr<LocalizationFlow> localization_flow_ptr = std::make_shared<LocalizationFlow>(nh);
 
@@ -43,7 +43,7 @@ int main(int argc, char *argv[]){
         rate.sleep();
     }
 
-    endwin(); // remove ncurse's influence on the terminal window
+//    endwin(); // remove ncurse's influence on the terminal window
 
     return 0;
 }

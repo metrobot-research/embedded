@@ -128,7 +128,7 @@ void LocalizationFlow::resetZeroCmd(){
 //// ------------- general data processing -----------------------
 void LocalizationFlow::Run(){
 //    time_run->tic();
-    key = getch();
+//    key = getch();
     if(key == ' ' || key == 'h' || key == 'd' || key == 'g')
         state = key;
     else if(key != ERR)
