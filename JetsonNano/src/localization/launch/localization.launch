@@ -1,10 +1,10 @@
 <launch>
-    <include file="$(find jetson_nano)/launch/serial_communication.launch"/>
-    
+    <!--tf: g_d435iColorOptical_d435iCenterOptical-->
+    <arg name="color_center_offset" default="0.015"/> <!--color_p_color_center-->
     <!--visualization-->
     <arg name="cv_vis" default="false"/>
-    <arg name="rviz_ball_cloud" default="false"/>
-    <arg name="rviz_vels" default="false"/>
+    <arg name="rviz_ball_cloud" default="true"/>
+    <arg name="rviz_vels" default="true"/>
     <arg name="vis_cam_model" default="false"/>
     <arg name="check_point_cloud" default="false"/>
     <!--cam params-->
@@ -42,16 +42,19 @@
     <arg name="ball_est_bounce_lost_coeff" default="0.45"/>
     <!-- Control -->
     <!--    head -->
+    <arg name="head_kf" default="0.3"/>
     <arg name="head_kp" default="0.3"/>
     <arg name="head_ki" default="0"/>
     <arg name="head_kd" default="0"/>
     <arg name="head_kw" default="0"/>
     <!--    wheel_rot -->
+    <arg name="wheel_rot_kf" default="0.3"/>
     <arg name="wheel_rot_kp" default="1"/>
     <arg name="wheel_rot_ki" default="0"/>
     <arg name="wheel_rot_kd" default="0"/>
     <arg name="wheel_rot_kw" default="0"/>
     <!--    wheel_fwd -->
+    <arg name="wheel_fwd_kf" default="0.3"/>
     <arg name="wheel_fwd_kp" default="1"/>
     <arg name="wheel_fwd_ki" default="0"/>
     <arg name="wheel_fwd_kd" default="0"/>
@@ -61,6 +64,7 @@
     
 
     <include file="$(find realsense2_camera)/launch/ME206A/rs_d435i_and_t265.launch">
+        <arg name="color_center_offset" default="$(arg color_center_offset)"/>
         <arg name="vis_cam_model" default="$(arg vis_cam_model)"/>
         <arg name="camera2_color_width"               default="$(arg camera2_color_width)"/>
         <arg name="camera2_color_height"              default="$(arg camera2_color_height)"/>
@@ -70,6 +74,8 @@
     </include>
 
     <node pkg="localization" type="localization_node" name="localization_node" output="screen">
+        <!--tf: g_d435iColorOptical_d435iCenterOptical-->
+        <param name="color_center_offset" value="$(arg color_center_offset)"/>
         <!--cv vis-->
         <param name="cv_vis" value="$(arg cv_vis)"/>
         <param name="rviz_ball_cloud" value="$(arg rviz_ball_cloud)"/>
@@ -108,16 +114,19 @@
         <param name="ball_est_bounce_lost_coeff" value="$(arg ball_est_bounce_lost_coeff)"/>
         <!-- Control -->
         <!--    head -->
+        <param name="head_kf" value="$(arg head_kf)"/>
         <param name="head_kp" value="$(arg head_kp)"/>
         <param name="head_ki" value="$(arg head_ki)"/>
         <param name="head_kd" value="$(arg head_kd)"/>
         <param name="head_kw" value="$(arg head_kw)"/>
         <!--    wheel_rot -->
+        <param name="wheel_rot_kf" value="$(arg wheel_rot_kf)"/>
         <param name="wheel_rot_kp" value="$(arg wheel_rot_kp)"/>
         <param name="wheel_rot_ki" value="$(arg wheel_rot_ki)"/>
         <param name="wheel_rot_kd" value="$(arg wheel_rot_kd)"/>
         <param name="wheel_rot_kw" value="$(arg wheel_rot_kw)"/>
         <!--    wheel_fwd -->
+        <param name="wheel_fwd_kf" value="$(arg wheel_fwd_kf)"/>
         <param name="wheel_fwd_kp" value="$(arg wheel_fwd_kp)"/>
         <param name="wheel_fwd_ki" value="$(arg wheel_fwd_ki)"/>
         <param name="wheel_fwd_kd" value="$(arg wheel_fwd_kd)"/>

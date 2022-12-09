@@ -1,10 +1,11 @@
 <launch>
   <arg name="vis_cam_model" default="false"/>
+  <arg name="color_center_offset" default="0.015"/>
 
   <arg name="device_type_camera1"    		default="t265"/>
   <arg name="device_type_camera2"    		default="d4.5"/>		<!-- Note: using regular expression. match D435, D435i, D415... -->
   <arg name="serial_no_camera1"    			default=""/>
-  <arg name="serial_no_camera2"    			default=""/>
+  <arg name="serial_nolocalization_flow.cpp_camera2"    			default=""/>
   <arg name="camera1"              			default="t265"/>
   <arg name="camera2"              			default="d435i"/>
   <arg name="tf_prefix_camera1"         default="$(arg camera1)"/>
@@ -91,7 +92,7 @@
   <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" if="$(arg vis_cam_model)"/> <!-- publish tfs specified by the above urdf, which are internal tfs of d435 -->
 
   <node pkg="tf" type="static_transform_publisher" name="t265_to_d400" args="-0.01 0.01 0.028 0 0.1745 0 /$(arg tf_prefix_camera1)_link /$(arg tf_prefix_camera2)_link 100"/> <!-- trans xyz in m, rot zyx in rad, multiplied from left to right -->
-  <node pkg="tf" type="static_transform_publisher" name="d400_to_d400center" args="0 -0.015 0 0 0 0 /$(arg tf_prefix_camera2)_link /$(arg tf_prefix_camera2)_center 100"/> <!-- trans xyz in m, rot zyx in rad, multiplied from left to right -->
+  <node pkg="tf" type="static_transform_publisher" name="d435iColorOptical_to_d435iCenterOptical" args="$(arg color_center_offset) 0 0 0 0 0 /$(arg tf_prefix_camera2)_color_optical_frame /$(arg tf_prefix_camera2)_center_optical_frame 100"/> <!-- trans xyz in m, rot zyx in rad, multiplied from left to right -->
 
 <!--  <node pkg="rviz" name="rviz" type="rviz" args="-d $(find realsense2_camera)/rviz/d435i_and_t265.rviz" output="screen"/>-->
 </launch>

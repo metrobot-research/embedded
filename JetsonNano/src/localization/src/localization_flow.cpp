@@ -18,13 +18,14 @@ LocalizationFlow::LocalizationFlow(ros::NodeHandle &nh):
     rgb_d_sub_ptr_(std::make_shared<DualImgSubscriber>(nh_, "/d435i/color/image_raw", "/d435i/aligned_depth_to_color/image_raw", 20)),
     tf_listener_ptr_(std::make_shared<TFListener>()),
     gyro_subscriber(std::make_shared<IMUSubscriber>(nh_, "/d435i/gyro/sample", 200)),
+    esp32_subscriber(std::make_shared<Esp32Subscriber>(nh_, "/sensor_data", 20)),
     tf_broadcast_ptr_(std::make_shared<TFBroadCaster>()),
     full_cloud_pub_ptr_(std::make_shared<CloudPublisher>(nh_, "/full_cloud", "/d435i_color_optical_frame", 20)),
     ball_cloud_pub_ptr_(std::make_shared<CloudPublisher>(nh_, "/ball_cloud", "/d435i_color_optical_frame", 20)),
     ball_vel_pub_ptr_(std::make_shared<ArrowPublisher>(nh_, "/ball_vel", "/t265_odom_frame", 20)),
     d435i_vel_pub_ptr_(std::make_shared<ArrowPublisher>(nh_, "/d435i_vel", "/t265_odom_frame", 20)),
     d435i_lin_vel_estimator(nh_), ball_estimator(nh_),
-    head_controller_pid(nh_, "head"), wheel_rot_controller_pid(nh_, "wheel_rot"), wheel_fwd_controller_pid(nh_, "wheel_fwd"),
+    head_controller_fwd_pid(nh_, "head"), wheel_rot_controller_fwd_pid(nh_, "wheel_rot"), wheel_fwd_controller_fwd_pid(nh_, "wheel_fwd"),
     cv_vis(false),
     rviz_ball_cloud(false), rviz_vels(false),
     check_point_cloud(false),
@@ -32,12 +33,15 @@ LocalizationFlow::LocalizationFlow(ros::NodeHandle &nh):
     full_cloud_ptr(new pcl::PointCloud<pcl::PointXYZRGB>()),
     ball_cloud_ptr(new pcl::PointCloud<pcl::PointXYZ>()),
     time_run(std::make_shared<TicToc>("time per Run(): ", true)),
+    time_readData(std::make_shared<TicToc>("time readData(): ", true)),
     time_cv(std::make_shared<TicToc>("time cv: ", true)),
     time_est(std::make_shared<TicToc>("time est: ", true)),
     time_ctrl(std::make_shared<TicToc>("time ctrl: ", true)){
 
     cmd_publisher = nh_.advertise<customized_msgs::cmd>("/controller_commands", 20);
 
+    ////----------------- color-center offset`-----------------
+    nh_.getParam("color_center_offset", color_center_offset);
     ////---------------- visualization opt ----------------------------
     nh_.getParam("cv_vis", cv_vis);
     nh_.getParam("rviz_ball_cloud", rviz_ball_cloud);
@@ -103,12 +107,12 @@ LocalizationFlow::LocalizationFlow(ros::NodeHandle &nh):
     nh_.getParam("max_num_objs", MAX_NUM_OBJECTS); // for noise detection, too many obj -> too large noise
     //// -------- Execution Limits ---------------
     nh_.getParam("max_fwd_vel", max_fwd_vel);
-    
+
     cmd.state = '1';
     resetZeroCmd();
-    
+
     //create slider bars for real-time param tuning
-    // createTrackbars();
+//    createTrackbars();
 }
 
 void LocalizationFlow::resetZeroCmd(){
@@ -121,17 +125,19 @@ void LocalizationFlow::resetZeroCmd(){
     cmd.grasperVelocity = 0;
 }
 
-
 //// ------------- general data processing -----------------------
 void LocalizationFlow::Run(){
+//    time_run->tic();
     key = getch();
     if(key == ' ' || key == 'h' || key == 'd' || key == 'g')
         state = key;
     else if(key != ERR)
         cout << "!!!!!------Invalide key!--------!!!!!\r\n";
 //    cout << "state: " << state << "\r\n";
-    
-//    time_run->tic();
+
+//    time_readData->tic();
+    bool hasData = readData();
+//    time_readData->toc();
     if(state == ' '){ // emergency stop, send state as '0'
         cmd.state = '0';
         cmd_publisher.publish(cmd);
@@ -140,13 +146,13 @@ void LocalizationFlow::Run(){
         cmd.state = '1';
         resetZeroCmd();
         cmd_publisher.publish(cmd);
-    }else if(readData()){
+    }else if(hasData){
         cmd.state = '1';
         if(state == 'd')
             target_dis = 0.3;
         else if(state == 'g')
             target_dis = 0;
-        
+
         if(check_point_cloud){ // only generate a full cloud from rgb+d to check alignment with realsense point cloud
             // Publish the whole point cloud for checking with Realsense point cloud.
             // Remember to enable "pointcloud" filter to publish Realsense point cloud
@@ -206,6 +212,7 @@ bool LocalizationFlow::readData(){
 
     // get data from subscribers and tf
     gyro_subscriber->ParseData(gyro_buffer_);
+    esp32_subscriber->ParseData(esp32_buffer);
     cur_wheel_center = Eigen::Vector3f(0,0,0); // TODO: -----synchronize wheel center data with dual img msg------
     nh_.getParam("gnd_height", cur_wheel_center.z());
     neck_ang_vel_w_pitch = 0; // TODO: ------- get it from subscriber---------
@@ -226,13 +233,14 @@ bool LocalizationFlow::readData(){
     }catch(tf2::ExtrapolationException &exc){
         return false;
     }
+    cur_d435i_center_pos = cur_d435i_pos + cur_d435i_ori * Eigen::Vector3f(color_center_offset, 0, 0);
 
-    d435i_lin_vel_estimator.addPos(cur_rgbd_stamped.time, cur_d435i_pos);
-    cur_d435i_lin_vel = d435i_lin_vel_estimator.getCurVel();
+    d435i_lin_vel_estimator.addPos(cur_rgbd_stamped.time, cur_d435i_center_pos);
+    cur_d435i_center_lin_vel = d435i_lin_vel_estimator.getCurVel();
     if(rviz_vels)
-        d435i_vel_pub_ptr_->Publish(cur_d435i_pos, cur_d435i_pos + cur_d435i_lin_vel, cur_rgbd_stamped.time);
+        d435i_vel_pub_ptr_->Publish(cur_d435i_center_pos, cur_d435i_center_pos + cur_d435i_center_lin_vel, cur_rgbd_stamped.time);
 
-    // synchronize gyro and wheel_center to the last rgb_d msg
+    // synchronize gyro, esp32 and wheel_center to the last rgb_d msg
     if(gyro_buffer_.empty()) { // todo: when wheel center is subscribed, also add wheel_center_buffer_.empty()
 //        cerr << "gyro_buffer_ empty" << "\r\n";
         return false;
@@ -252,16 +260,40 @@ bool LocalizationFlow::readData(){
             }
         }
         if(!has_gyro){
-            cout << "all gyro outdated!----------\r\n";
+            cout << "all gyro outdated!----------";
             return false;
         }
-
-    // TODO: sync wheel center and neck ang vel pitch
     }
+
+    if(esp32_buffer.empty()) {
+//        cerr << "esp32_buffer_ empty" << "\r\n";
+        neck_ang_vel_w_pitch = 0;
+    }else{
+        //sync esp32
+        bool has_esp32 = false;
+        while(!esp32_buffer.empty()){
+            if(esp32_buffer.front().timestamp < cur_rgbd_stamped.time)
+                esp32_buffer.pop_front();
+            else{
+                neck_ang_vel_w_pitch = esp32_buffer.front().data_ptr->orientation[1]; // when align_depth_to_color is true, gyro is expresssed in gyro optical frame parallel to color optical frame
+//                cout << "neck_ang_vel_w_pitch[deg/s]: " << neck_ang_vel_w_pitch / M_PI * 180. << "\r\n";
+                has_esp32 = true;
+                break;
+            }
+        }
+        if(!has_esp32){
+            neck_ang_vel_w_pitch = 0;
+            cout << "all esp32 outdated!----------";
+            return false;
+        }
+    }
+
 
     // pop outdated data to avoid occupying too much memory
     while(gyro_buffer_.size() > 600)
         gyro_buffer_.pop_front();
+    while(esp32_buffer.size() > 80)
+        esp32_buffer.pop_front();
     while(wheel_center_buffer_.size() > 300)
         wheel_center_buffer_.pop_front();
     while(rgb_d_buffer_.size() > 60)
@@ -529,23 +561,24 @@ void LocalizationFlow::trackFilteredObject(int &x, int &y, Mat threshold, Mat &c
 
 //// -------------- Functions for control -------------------------
 void LocalizationFlow::calcControlCmd(){
-    // Head motor
-    Eigen::Vector3f d435i_p_d435i_ball = cur_d435i_ori.toRotationMatrix().inverse() * (ball_center - cur_d435i_pos);
+    // ----------------Head motor--------------------------------
+    // here the d435iCenter means d435i_center_optical_frame
+    Eigen::Vector3f d435iCenter_p_d435iCenter_ball = cur_d435i_ori.toRotationMatrix().inverse() * (ball_center - cur_d435i_center_pos);
 //    cout << "R_d435i_w:\n" << cur_d435i_ori.toRotationMatrix().inverse() << "\r\n";
 //    cout << "ball_center:" << ball_center.x() << ", " << ball_center.y() << ", " << ball_center.z() << "\r\n";
-//    cout << "cur_d435i_pos: " << cur_d435i_pos.x() << ", " << cur_d435i_pos.y() << ", " << cur_d435i_pos.z() << "\r\n";
-//    cout << "d435i_p_d435i_ball: " << d435i_p_d435i_ball.x() << ", " << d435i_p_d435i_ball.y() << ", " << d435i_p_d435i_ball.z() << "\r\n";
-    Eigen::Vector3f d435i_p_d435i_ball_yz(0, d435i_p_d435i_ball.y(), d435i_p_d435i_ball.z());
-    Eigen::Vector3f d435i_v_d435iw_ball = cur_d435i_ori.inverse() * (ball_estimator.getCurBallVel() - cur_d435i_lin_vel);
-    float omg_neck_ball_pitch = d435i_p_d435i_ball_yz.cross(d435i_v_d435iw_ball).x() / pow(d435i_p_d435i_ball_yz.norm(),2) - neck_ang_vel_w_pitch;
+//    cout << "cur_d435i_center_pos: " << cur_d435i_center_pos.x() << ", " << cur_d435i_center_pos.y() << ", " << cur_d435i_center_pos.z() << "\r\n";
+//    cout << "d435iCenter_p_d435iCenter_ball: " << d435iCenter_p_d435iCenter_ball.x() << ", " << d435iCenter_p_d435iCenter_ball.y() << ", " << d435iCenter_p_d435iCenter_ball.z() << "\r\n";
+    Eigen::Vector3f d435iCenter_p_d435iCenter_ball_yz(0, d435iCenter_p_d435iCenter_ball.y(), d435iCenter_p_d435iCenter_ball.z());
+    Eigen::Vector3f d435iCenter_v_d435iCenterW_ball = cur_d435i_ori.inverse() * (ball_estimator.getCurBallVel() - cur_d435i_center_lin_vel);
+    float omg_neck_ball_pitch = d435iCenter_p_d435iCenter_ball_yz.cross(d435iCenter_v_d435iCenterW_ball).x() / pow(d435iCenter_p_d435iCenter_ball_yz.norm(),2) - neck_ang_vel_w_pitch;
 
-    float pitch_e = atan2(-d435i_p_d435i_ball.y(), d435i_p_d435i_ball.z());
-   cmd.headVelocity = omg_neck_ball_pitch + head_controller_pid.generateCmd(cur_rgbd_stamped.time, pitch_e);
-    // cmd.headVelocity = head_controller_pid.generateCmd(cur_rgbd_stamped.time, pitch_e);
-   cout << "pitch_e[deg]: " << pitch_e / M_PI * 180. << ", cmd[deg/s]: " << cmd.headVelocity / M_PI * 180. << "\r\n";
-    cout << "omg_neck_ball_pitch[deg/s]: " << omg_neck_ball_pitch / M_PI * 180;
+    float pitch_e = atan2(-d435iCenter_p_d435iCenter_ball.y(), d435iCenter_p_d435iCenter_ball.z());
+    cmd.headVelocity = head_controller_fwd_pid.generateCmd(cur_rgbd_stamped.time, pitch_e, omg_neck_ball_pitch);
+//    cout << "pitch_e[deg]: " << pitch_e / M_PI * 180.
+//         << ", pitch_omg[deg/s]: " << omg_neck_ball_pitch / M_PI * 180
+//         << ", pitch_cmd[deg/s]: " << cmd.headVelocity / M_PI * 180. << "\r\n";
 
-    // Wheel rot
+    // -----------------------Wheel rot-------------------------------------
     Eigen::Matrix3f R_w_d435i(cur_d435i_ori);
     Eigen::Matrix3f R_w_d435iwh = Eigen::Matrix3f::Identity();
     Eigen::Vector3f y_vec = R_w_d435i.block(0,1,3,1);
@@ -561,29 +594,28 @@ void LocalizationFlow::calcControlCmd(){
         R_w_d435iwh.block(0,0,3,1) = R_w_d435iwh_inverted.block(0,2,3,1);
         R_w_d435iwh.block(0,1,3,1) = -R_w_d435iwh_inverted.block(0,0,3,1);
     }
-    Eigen::Vector3f d435iwh_p_d435i_ball = R_w_d435iwh.transpose() * (ball_center - cur_d435i_pos);
-    tf_broadcast_ptr_->SendTransform("/t265_odom_frame", "/d435iwh", cur_d435i_pos, Eigen::Quaternionf(R_w_d435iwh), cur_rgbd_stamped.time);
+    Eigen::Vector3f d435iwh_p_d435iwh_ball = R_w_d435iwh.transpose() * (ball_center - cur_d435i_center_pos);
+    tf_broadcast_ptr_->SendTransform("/t265_odom_frame", "/d435iwh", cur_d435i_center_pos, Eigen::Quaternionf(R_w_d435iwh), cur_rgbd_stamped.time);
 
-    Eigen::Vector3f d435iwh_p_d435i_ball_xy(d435iwh_p_d435i_ball.x(), d435iwh_p_d435i_ball.y(), 0);
-    Eigen::Vector3f d435iwh_v_d435iwh_ball = R_w_d435iwh.transpose() * (ball_estimator.getCurBallVel() - cur_d435i_lin_vel);
-    float omg_d435iwh_ball_yaw = d435iwh_p_d435i_ball_xy.cross(d435iwh_v_d435iwh_ball).z() / pow(d435iwh_p_d435i_ball_xy.norm(),2);
+    Eigen::Vector3f d435iwh_p_d435iwh_ball_xy(d435iwh_p_d435iwh_ball.x(), d435iwh_p_d435iwh_ball.y(), 0);
+    Eigen::Vector3f d435iwh_v_d435iwh_ball = R_w_d435iwh.transpose() * (ball_estimator.getCurBallVel() - cur_d435i_center_lin_vel);
+    float omg_d435iW_ball_yaw = d435iwh_p_d435iwh_ball_xy.cross(d435iwh_v_d435iwh_ball).z() / pow(d435iwh_p_d435iwh_ball_xy.norm(),2);
 
-    float yaw_e = atan2(d435iwh_p_d435i_ball.y(), d435iwh_p_d435i_ball.x());
-//    cmd.t_dot = omg_d435iwh_ball_yaw + wheel_rot_controller_pid.generateCmd(cur_rgbd_stamped.time, yaw_e);
-    cmd.t_dot = wheel_rot_controller_pid.generateCmd(cur_rgbd_stamped.time, yaw_e);
-//    cout << ", yaw_e[deg]: " << yaw_e / M_PI * 180. << ", yaw_cmd[deg/s]: " << cmd.t_dot / M_PI * 180. << "\r\n";
-//    cout << ", omg_d435iwh_ball_yaw[deg/s]: " << omg_d435iwh_ball_yaw / M_PI * 180 << "\r\n";
+    float yaw_e = atan2(d435iwh_p_d435iwh_ball.y(), d435iwh_p_d435iwh_ball.x());
+    cmd.t_dot = wheel_rot_controller_fwd_pid.generateCmd(cur_rgbd_stamped.time, yaw_e, omg_d435iW_ball_yaw);
+//    cout << "yaw_e[deg]: " << yaw_e / M_PI * 180.
+//         << ", yaw_omg[deg/s]: " << omg_d435iW_ball_yaw / M_PI * 180
+//         << ", yaw_cmd[deg/s]: " << cmd.t_dot / M_PI * 180. << "\r\n";
 
-    float fwd_e = d435iwh_p_d435i_ball.x() - target_dis;
-    float unsaturated_fwd_cmd = wheel_fwd_controller_pid.generateCmd(cur_rgbd_stamped.time, fwd_e);
+    // ------------------------ Wheel fwd ------------------------------
+    float fwd_e = d435iwh_p_d435iwh_ball.x() - target_dis;
+    float unsaturated_fwd_cmd = wheel_fwd_controller_fwd_pid.generateCmd(cur_rgbd_stamped.time, fwd_e, d435iwh_v_d435iwh_ball.x());
     if(unsaturated_fwd_cmd < -max_fwd_vel)
         cmd.x_dot = -max_fwd_vel;
     else if(unsaturated_fwd_cmd > max_fwd_vel)
         cmd.x_dot = max_fwd_vel;
     else
         cmd.x_dot = unsaturated_fwd_cmd;
-
-    // cout << "x_dot: " << cmd.x_dot << ", t_dot: " << cmd.t_dot << "headVelocity: " << cmd.headVelocity << "\r\n";
 
     cmd_publisher.publish(cmd);
 }

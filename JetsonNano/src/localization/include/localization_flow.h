@@ -6,6 +6,7 @@
 #include "subscriber/dual_img_subscriber.hpp"
 #include "subscriber/tf_listener.hpp"
 #include "subscriber/imu_subscriber.hpp"
+#include "subscriber/esp32_subscriber.hpp"
 // publisher
 #include "publisher/cloud_publisher.hpp"
 #include "publisher/arrow_publisher.hpp"
@@ -14,11 +15,12 @@
 #include <sensor_msgs/CameraInfo.h>
 #include "sensor_data/cloud_data.hpp"
 #include "sensor_data/dual_img_stamped.hpp"
+#include "customized_msgs/SensorData.h"
 // estimators
 #include "d435i_lin_vel_estimator.hpp"
 #include "ball_estimator.hpp"
 //controllers
-#include "pid.hpp"
+#include "fwd_pid.hpp"
 #include <customized_msgs/cmd.h>
 // yaml
 #include <yaml-cpp/yaml.h>
@@ -68,6 +70,8 @@ private:
     std::shared_ptr<DualImgSubscriber> rgb_d_sub_ptr_;
     std::shared_ptr<TFListener> tf_listener_ptr_;
     std::shared_ptr<IMUSubscriber> gyro_subscriber;
+    std::shared_ptr<Esp32Subscriber> esp32_subscriber;
+
     // publisher
     //   for use
     std::shared_ptr<TFBroadCaster> tf_broadcast_ptr_;
@@ -81,14 +85,16 @@ private:
     D435iLinVelEstimator d435i_lin_vel_estimator;
     BallEstimator ball_estimator;
     // controllers
-    PID head_controller_pid; // feedforward term is more easily calculated in LocalizationFlow class, can be added to the PID output
-    PID wheel_rot_controller_pid;
-    PID wheel_fwd_controller_pid;
+    FwdPID head_controller_fwd_pid; // feedforward term is more easily calculated in LocalizationFlow class, can be added to the PID output
+    FwdPID wheel_rot_controller_fwd_pid;
+    FwdPID wheel_fwd_controller_fwd_pid;
 
     // params
     char key;
     char state;
     float target_dis;
+    // color-center offset
+    float color_center_offset;
     // visualization opt
     bool cv_vis;
     bool rviz_ball_cloud, rviz_vels;
@@ -130,11 +136,13 @@ private:
     // data processing flow
     // read in bgr & depth imgs, and wheel_center
     std::deque<IMUData> gyro_buffer_;
+    std::deque<SensorDataPtrStamped> esp32_buffer;
     std::deque<DualImgStamped> rgb_d_buffer_;
     DualImgStamped cur_rgbd_stamped;
     Eigen::Vector3f cur_d435i_pos;
     Eigen::Quaternionf cur_d435i_ori;
-    Eigen::Vector3f cur_d435i_lin_vel;
+    Eigen::Vector3f cur_d435i_center_pos;
+    Eigen::Vector3f cur_d435i_center_lin_vel;
     Eigen::Vector3f cur_d435i_ang_vel; // expressed in color optical frame
     std::deque<Eigen::Vector3f> wheel_center_buffer_;
     Eigen::Vector3f cur_wheel_center;
@@ -156,6 +164,7 @@ private:
 
     // timing
     std::shared_ptr<TicToc> time_run;
+    std::shared_ptr<TicToc> time_readData;
     std::shared_ptr<TicToc> time_cv;
     std::shared_ptr<TicToc> time_est;
     std::shared_ptr<TicToc> time_ctrl;
