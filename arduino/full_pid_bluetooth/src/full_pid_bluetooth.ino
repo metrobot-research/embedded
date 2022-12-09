@@ -70,19 +70,24 @@ using namespace BLA;
 #define WHEEL_RADIUS 0.0508 // Wheel radius in meters
 
 // Sensor constants
-#define CF_TIME_CONSTANT 0.995 // Time constant a for complementary filter
+#define CF_TIME_CONSTANT_GYR 0.99 // Time constant a for complementary filter for the gyro
+#define CF_TIME_CONSTANT_WHEELS 0.95 // Time constant for complementary filter for wheel speed
 
 // General PID constants
-#define MAX_VELOCITY 0.5       // Maximum magnitude of velocity PID output
+#define MAX_VELOCITY 1       // Maximum magnitude of velocity PID output
 #define MAX_PWM 4096           // Maximum magnitude of motor controller PID outputs
 #define MAX_PHI 1            // Maximum angle command the robot can take, in radians, from 0.
 #define PHI_SETPOINT_RATIO 1.0 // Ratio of setpoint of tilt controller to output of velocity controller
+#define PHI_BALANCED -0.056     // The approximate phi at which the robot is balanced in zero-state
+#define PHI_BALANCED_RANGE 0.15     // The approximate phi difference between which the robot is pretty much balanced
 
 #define HIPS_COMMAND_MIN -.7 // The maximum hips angle that can be commanded
 #define HIPS_COMMAND_MAX 0 // The minimum hips angle that can be commanded
 
+#define MAX_HEAD_VEL 0.6
+#define MAX_GRASPER_VEL 0.6
 // Time constants
-#define TIMER_INTERVAL_MS 25. // Interval between timer interrupts
+#define TIMER_INTERVAL_MS 10. // Interval between timer interrupts
 
 #define GET_VARIABLE_NAME(Variable) = #Variable
 
@@ -90,6 +95,7 @@ using namespace BLA;
 
 // Robot state declarator
 volatile bool currently_enabled= false;
+volatile int close_to_balanced = 0; // Checks whether the robot is close to balanced
 
 // Serial controller definitions
 BluetoothSerial SerialBT;
@@ -100,15 +106,16 @@ const unsigned int MAX_COMMAND_LENGTH = 24;
 typedef struct receivedStateCmd{
   char state;                       // Set the robot's state: enabled or disabled
   char furtherState;                // Not used yet, placeholder so that the message does not have unpredicted end behavior
-  unsigned short lowerNeckPosition; // Commanded lower neck position  
+  unsigned short neckPos; // Commanded lower neck position  
   
   float xdot_cmd;         // Commanded forward velocity
   float tdot_cmd;                 // Commanded angular velocity
   
-  float upperNeckVelocity;          // Commanded upper neck velocity
+  float headVel;          // Commanded upper neck velocity
   unsigned short hipAngle;          // Commanded hip angle
   unsigned short grasperVelocity;      // Commanded grasper angle
-  
+  char delimiter;                       
+  char delimiter2;                
 };
 
 const int receivedStateCmdSize = sizeof(receivedStateCmd);
@@ -193,6 +200,7 @@ static receivedPacket latest_command;
 static sentPacket latest_state;
 static char fullCommand[MAX_COMMAND_LENGTH];
 static unsigned int serialIndex = 0;
+static int delimCnt = 0; // Count of how many delimiters were received
 
 // Encoder definitions
 ESP32Encoder encoder_wheel_right; // Right wheel encoder
@@ -217,22 +225,25 @@ volatile int count_neck = 0;
 volatile int count_neck_total = 0;
 
 // PID Constants for wheel velocity (loop one)
-double Kp_xdot = 0.030;
-double Ki_xdot = 0.3;
+double Kp_xdot = 0.050;
+double Ki_xdot = 0.35;
 double Kd_xdot = 0.002;
 
 double r_xdot = 0; // Commanded wheel speed in m/s
 double u_xdot = 0; // Output of velocity PID, added to balancing loop to command velocity robot motion
 double xdot_l = 0;
-double xdot_r = 0;
+double xdot_l_f = 0; // Filtered left wheel velocity
+double xdot_r = 0;  
+double xdot_r_f = 0; // Filtered right wheel velocity
 double xdot = 0; // Current average velocity of left and right wheels
+double xdot_f = 0; // Filtered fwd wheel velocity
 
 // PID constants for forward/backward tilt (loop two)
-double Kp_phi = 12500;
-double Ki_phi = 145000;
+double Kp_phi = 6000;
+double Ki_phi = 80000;
 double Kd_phi = 2000;
 
-double delta_phi = 0; // Command that should be added to r_phi
+
 double r_phi = 0;   // Commanded tilt in radians
 double u_phi = 0;   // Output of tilt PID loop
 double phi = 0;     // Tilt calculated by gyro
@@ -285,7 +296,7 @@ double neck_angle = 0;   // Current neck angle (nominal angle, for both, to spec
 
 double NECK_COMMAND_MIN = 0.0; // The maximum neck angle that can be commanded
 double NECK_COMMAND_MAX = 10.0; // The minimum neck angle that can be commanded
-
+int loopCompletionCount = 0;
 // PID Loops:
 // Phidot: tracks falling over rate of change to 0. Output: commanded angle for robot to take.
 // PID phidot_PID(&phidot,&delta_phi,&r_phidot, Kp_phidot, Ki_phidot, Kd_phidot, DIRECT);
@@ -375,6 +386,9 @@ void disable(){
   driveWheelMotors(0,0);
   driveJointMotors(0,0,0);
   driveServos(0,0);
+  u_phi = 0;
+  u_xdot = 0;
+  u_theta_dot = 0;
 }
 
 // Drive motors at desired dc_pwm (to be active, 0-4095)
@@ -495,21 +509,44 @@ void driveServos(float u_grasper, float u_neck)
   }
 }
 
-void driveServosVelocity(float grasper_vel_cmd, float neck_vel_cmd, float &u_grasper, float &u_neck)
+void driveServosVelocity(float grasper_vel_cmd, float head_vel_cmd, float &u_grasper, float &u_neck)
 {
   // TODO: Drive the neck motors with a velocity. 
-  // At each timestep, increment u_neck by neck_vel_cmd*timestep_ms
+  // At each timestep, increment u_neck by head_vel_cmd*timestep_ms
   // and u_grasper by grasper_vel_cmd
-
-  u_neck += neck_vel_cmd*TIMER_INTERVAL_MS/1000.;
-  u_neck = constrain(u_neck,0,1);
-  u_grasper += grasper_vel_cmd*TIMER_INTERVAL_MS/1000.;
-  u_grasper = constrain(u_grasper,0,1);
+  head_vel_cmd = constrain(head_vel_cmd,-MAX_HEAD_VEL,MAX_HEAD_VEL);
+  
+  if(currently_enabled){
+    u_neck += head_vel_cmd*TIMER_INTERVAL_MS/1000.;
+    u_neck = constrain(u_neck,0,1);
+    u_grasper += grasper_vel_cmd*TIMER_INTERVAL_MS/1000.;
+    u_grasper = constrain(u_grasper,0,1);
+  }
 }
 
-float getHeadAngle(){
-  // TODO: Return current head angle. Convert current Servo PWM to degrees. 
-  return -1.;
+// Debug function to print balancing data;
+void printBalancingData(){
+  Serial.println(">x_dot:"+String(xdot,4));
+  Serial.println(">r_x_dot:"+String(r_xdot,4));
+  Serial.println(">phi:"+String(phi,4));
+  Serial.println(">r_phi:"+String(r_phi,4));
+  Serial.println(">phidot:"+String(phidot,4));
+  Serial.println(">u_phi:"+String(u_phi,4));  
+}
+
+// Debug function to print hip angle data
+void printHipData(){  
+  Serial.println(">l_hip_angle:"+String(l_hip_angle));
+  Serial.println(">r_hip_angle:"+String(r_hip_angle));
+}
+
+// Debug function to print manipulator data
+void printManipData(){
+  // Serial.println(">lower_neck_angle:"+String(neck_angle));
+  Serial.println(">head_angle:"+String(u_head,4));
+  Serial.println(">headVelCmd:"+String(head_vel_cmd,4));
+  Serial.println(">grasper_angle:"+String(u_grasper,4));
+  Serial.println(">grasperVelCmd:"+String(grasper_vel_cmd,4));
 }
 
 BLA::Matrix<3> crossProduct(BLA::Matrix<3> u, BLA::Matrix<3> v){
@@ -551,7 +588,7 @@ void getAngles()
   phi_acc = atan2(dotProduct((crossProduct(ACC_VERTICAL_VEC,acc_vec)),(acc_normal_vec)), dotProduct(acc_vec,ACC_VERTICAL_VEC));
 
   // Complementary filter
-  phi = CF_TIME_CONSTANT * phi + (1 - CF_TIME_CONSTANT) * phi_acc;
+  phi = CF_TIME_CONSTANT_GYR * phi + (1 - CF_TIME_CONSTANT_GYR) * phi_acc;
 }
 
 // Initialize velocity PID loop
@@ -840,10 +877,6 @@ void processSerialCommand(char b)
   //    If 3: Set tuning values
   //      Message type 2: PID input
   //    Else: Throw error? 
-  
-  //    Command message type:
-  //      Byte 0: message code
-  //      Byte 1-3: fwd velocity limit (tentatively map 0-65535 --> -1, 1, scale by max, min limits on board)
      
   //    Set Tunings message type:
   //      Byte 0: message code
@@ -853,14 +886,18 @@ void processSerialCommand(char b)
   //      Byte 10-13: new Kd
   //      Byte 14: delimiter
 
-  if (b != DELIMITER && serialIndex<(MAX_COMMAND_LENGTH-1)) // command is not yet finished
+  if (b != DELIMITER && serialIndex<=(MAX_COMMAND_LENGTH-1)) // command is not yet finished
   {
     fullCommand[serialIndex] = b;
     serialIndex++;
-    
+    delimCnt=0;
   }
-  else // Full command received
-  {
+  else if (b==DELIMITER&&delimCnt==0){
+    fullCommand[serialIndex] = b;
+    serialIndex++;
+    delimCnt++;
+  }
+  else if (b==DELIMITER&&delimCnt==1){ // Received end of message. 
     // // Do what we want with the data. 
     // // Decode message:
     // char message_type = fullCommand[0];
@@ -878,31 +915,35 @@ void processSerialCommand(char b)
     //     // TODO
     //   case '3':
     //     // Command will set tuning values
-
-    //     // Remaining data will be: 
-    //     // cm2[1] = loop_id
-    //     // cm2[2-5]   = kp
-    //     // cm2[6-9]   = ki
-    //     // cm2[10-13] = kd
-    //     char loop_id = fullCommand[1];
-    //     float kp_new = bytes2float((fullCommand.substring(2,5)));
-    //     float ki_new = bytes2float((fullCommand.substring(6,9));
-    //     float kd_new = bytes2float((fullCommand.substring(10,13));
-    //     set_pid_constants(loop_id, kp_new, ki_new, kd_new);
-    // }
-    fullCommand[serialIndex]='\0'; // terminate with escape character to make printable string. Do we need to do this? Probably not.
+    fullCommand[serialIndex] = b;
+    /*char state;                     // Set the robot's state: enabled or disabled
+    char furtherState;                // Not used yet, placeholder so that the message does not have unpredicted end behavior
+    unsigned short neckPos; // Commanded lower neck position  
+  
+    float xdot_cmd;         // Commanded forward velocity
+    float tdot_cmd;                 // Commanded angular velocity
+  
+    float headVel;          // Commanded upper neck velocity
+    unsigned short hipAngle;          // Commanded hip angle
+    unsigned short grasperVelocity;      // Commanded grasper angle
+    char delimiter;                       
+    char delimiter2; */
 
     //Serial.print("fullCommand:");
     //Serial.println(fullCommand);
     memcpy(latest_command.receivedFromSerial,fullCommand,receivedStateCmdSize);
     
-    Serial.println("Received:"+String(latest_command.message.xdot_cmd, 6));
-    Serial.println("NumBytes:"+String(serialIndex));
-    // Serial.println("Received:"+String(latest_command.message.test2));
-
+    // Serial.println("state:"+String(latest_command.message.state));
+    // Serial.println("furtherstate:"+String(latest_command.message.furtherState));
+    // Serial.println("neckPos:"+String(latest_command.message.neckPos, 4));
+    // Serial.println("xdot:"+String(latest_command.message.xdot_cmd, 4));
+    // Serial.println("tdot:"+String(latest_command.message.tdot_cmd, 4));
+    // Serial.println("headVel:"+String(latest_command.message.headVel, 4));
+    // Serial.println("hipAngle:"+String(latest_command.message.hipAngle, 4));
+    // Serial.println("grasperVel:"+String(latest_command.message.grasperVelocity, 4));
+    head_vel_cmd = latest_command.message.headVel;
     serialIndex=0;
   }
-  // Serial2.print("Message sent from ESP32|");
   return;
 }
 
@@ -959,10 +1000,56 @@ void publishSensorValues()
   latest_state.message.unused2=' ';
   latest_state.message.delimiter=DELIMITER;
   latest_state.message.delimiter2=DELIMITER;
-  Serial.println(String(short(65535.*u_head)));
   Serial2.write(latest_state.byteArray, sentMsgSize);
 }
 
+void balance(){
+    if(!(close_to_balanced==1)){ // Check if the robot is closet to balanced
+      // Robot is not close to balanced
+      if ((PHI_BALANCED - PHI_BALANCED_RANGE)<phi&&phi<(PHI_BALANCED + PHI_BALANCED_RANGE)){
+        // The robot is close to balanced
+        close_to_balanced=1;
+        phi_PID.SetMode(AUTOMATIC);
+        velocity_PID.SetMode(AUTOMATIC);
+        turning_velocity_PID.SetMode(AUTOMATIC);
+        u_xdot=0;
+        u_phi=0;
+      }
+    }
+    else{
+      if (!((PHI_BALANCED - PHI_BALANCED_RANGE)<phi&&phi<(PHI_BALANCED + PHI_BALANCED_RANGE))){
+        close_to_balanced=0;
+      }
+      else{
+        Serial.println("1");
+        velocity_PID.Compute();
+        // phidot_PID.Compute();
+        r_phi = u_xdot;
+        phi_PID.Compute();
+        turning_velocity_PID.Compute();
+        hips_PID.Compute();
+        Serial.println("u_phi:"+String(u_phi,3));
+        driveWheelMotors(u_phi + u_theta_dot, u_phi - u_theta_dot);
+      }
+    }
+}
+
+void calculateWheelVelocities(){
+  xdot_l = count_l * 4 * PI * WHEEL_RADIUS / (2248.86 * TIMER_INTERVAL_MS / 1000.);
+  xdot_l_f = xdot_l_f*CF_TIME_CONSTANT_WHEELS + (1-CF_TIME_CONSTANT_WHEELS)*xdot_l;
+  xdot_r = count_r * 4 * PI * WHEEL_RADIUS / (2248.86 * TIMER_INTERVAL_MS / 1000.);
+  xdot_l_f = xdot_r_f*CF_TIME_CONSTANT_WHEELS + (1-CF_TIME_CONSTANT_WHEELS)*xdot_r;
+  //xdot = ((count_l + count_r) / 2) * 4 * PI * WHEEL_RADIUS / (2248.86 * TIMER_INTERVAL_MS / 1000.); //(m/s)
+  xdot = (xdot_l_f+xdot_r_f)/2; // Filtered xdot
+}
+
+void calculateJointAngles(){
+  l_hip_angle = 2*count_lh_total*2*3.14159265*24 /(8400*28); // 8200 counts per revolution
+  r_hip_angle = 2*count_rh_total*2*3.14159265*24 /(8400*28); // 8200 counts per revolution
+  hips = r_hip_angle;
+
+  neck_angle = 2*count_neck_total*2*3.14159265*24/(28*10884.47); // 10884.47 counts per revolution
+}
 void setup()
 {
   Serial.begin(115200);
@@ -1009,7 +1096,7 @@ void setup()
   }
 
   phi = atan2(dotProduct(crossProduct(ACC_VERTICAL_VEC,acc_vec),acc_normal_vec), dotProduct(acc_vec,ACC_VERTICAL_VEC));
-
+  
   phi_acc = phi; // Both phi values initially come from accelerometer
 
   // Initialize encoders
@@ -1085,76 +1172,39 @@ void loop()
   if (interrupt_complete){
     // ensuring reset isn't skipped:
     
-    unsigned long timekeeping_0 = micros();
+    // unsigned long timekeeping_0 = micros();
     portENTER_CRITICAL(&timerMux0);
     interrupt_complete = false;
     portEXIT_CRITICAL(&timerMux0);
 
     // Calculate velocity from encoder readings
-    xdot_l = count_l * 4 * PI * WHEEL_RADIUS / (2248.86 * TIMER_INTERVAL_MS / 1000.);
-    xdot_r = count_r * 4 * PI * WHEEL_RADIUS / (2248.86 * TIMER_INTERVAL_MS / 1000.);
-    xdot = ((count_l + count_r) / 2) * 4 * 3.14159265 * WHEEL_RADIUS / (2248.86 * TIMER_INTERVAL_MS / 1000); //(m/s)
-    
-    // Calculate current hip angles from encoders
-    l_hip_angle = 2*count_lh_total*2*3.14159265*24 /(8400*28); // 8200 counts per revolution
-    r_hip_angle = 2*count_rh_total*2*3.14159265*24 /(8400*28); // 8200 counts per revolution
-    hips = r_hip_angle;
+    calculateWheelVelocities();
 
-    neck_angle = 2*count_neck_total*2*3.14159265*24/(28*10884.47); // 10884.47 counts per revolution
+    // Calculate current hip angles from encoders
+    calculateJointAngles();
     // Read in gyro data and compute PID outputs
     
     getAngles();
-    velocity_PID.Compute();
-    // phidot_PID.Compute();
-    r_phi = u_xdot;
-    phi_PID.Compute();
-    turning_velocity_PID.Compute();
-    hips_PID.Compute();
-
-    // Print telemetry to serial
-    // Serial.print("Motor forward input (dc_pwm):");
-    // Serial.print(-1 * u_phi / 4096);
-    // Serial.print(", Current forward velocity (m/s):");
-    // Serial.println(">x_dot:"+String(xdot));
-    // Serial.println(">r_xdt:"+String(r_xdot));
-    // Serial.println(">l_hip_angle:"+String(l_hip_angle));
-    // Serial.println(">r_hip_angle:"+String(r_hip_angle));
-    // Serial.println(">lower_neck_angle:"+String(neck_angle));
-    // Serial.println(">head_angle:"+String(getHeadAngle()));
-
-    // Serial.print(", Current tilt angle (rad):");
-    Serial.println(">phi:"+String(phi,4));
-    Serial.println(">rphi:"+String(r_phi,4));
-    Serial.println(">delta_phi:"+String(delta_phi,4));
-    Serial.println(">phidot:"+String(phidot,4));
-    Serial.println(">u_phi:"+String(u_phi));
-    // Serial.print(", Tilt angle set point (rad):");
-    // Serial.println(">r_phi:"+String(r_phi));
     
-    // Serial.print(r_phi);
-    // Serial.print(", Current turning velocity (rad/s):");
-    // Serial.print(theta_dot);
-    // Serial.print(", Motor turning velocity input:");
-    // Serial.println(">u_thd:"+String(u_theta_dot));
-    //Serial.println();
-    // Serial.println(">hips:"+String(hips));
-    // Serial.println(">r_hips:"+String(r_hips));
-    // Serial.println(">u_hips:"+String(u_hips));
-    // Serial.println(">u_gamma:"+String(u_gamma));
-    // Serial.println(">r_hips:"+String(r_hips));
-    
+    balance();
     // Drive motors using output from tilt angle and turning velocity PID loops
-    //driveWheelMotors(u_phi + u_theta_dot, u_phi - u_theta_dot);
     //driveJointMotors(u_hips+u_gamma,u_hips-u_gamma,0); // last term should be u_neck
     driveServosVelocity(grasper_vel_cmd,head_vel_cmd,u_grasper,u_head);
-    //driveServos(u_grasper,u_head);
-    unsigned long timekeeping_1 = micros();
-    // Serial.println(">loop_time:"+String(timekeeping_1-timekeeping_0,5));
+    driveServos(u_grasper,u_head);
+    // unsigned long timekeeping_1 = micros();
+    // Serial.println(">loop_time:"+String(timekeeping_1-timekeeping_0));
     // Serial.println(">h_u:"+String(u_head));
     // Serial.println(">h_v_cmd:"+String(head_vel_cmd));
     // Serial.println(">g_u:"+String(u_grasper));
     // Serial.println(">g_v_cmd:"+String(grasper_vel_cmd));
     publishSensorValues();
+    if(loopCompletionCount>5){
+      printBalancingData();
+      // printManipData();
+      // Serial.println("Close to balanced:"+String(close_to_balanced));
+      loopCompletionCount=0;
+    }    
+    loopCompletionCount++;
   }
 
   // Read in and process commands from Bluetooth or serial controller

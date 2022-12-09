@@ -269,23 +269,28 @@ async def run_controller(writer, input_type):
             if keys[pygame.K_w]:
                 writer.write(b'{"cmd":0,"args":[%6f]}\n' % FORWARD_SPEED)
                 print("Setting speed: ", FORWARD_SPEED)
+                reset_xdot_cmd = True
             elif keys[pygame.K_s]:
                 writer.write(b'{"cmd":0,"args":[%6f]}\n' % (-FORWARD_SPEED))
                 print("Setting speed: ", -FORWARD_SPEED)
-            else:
-                # writer.write(b'{"cmd":0,"args":[0]}\n')
-                # print("Setting speed: ", 0)
+                reset_xdot_cmd = True
+            elif(reset_xdot_cmd):
+                writer.write(b'{"cmd":0,"args":[0]}\n')
+                print("Setting speed: ", 0)
+                reset_xdot_cmd = False
                 pass
             if keys[pygame.K_a]:
                 writer.write(b'{"cmd":1,"args":[%6f]}\n' % (-TURN_SPEED))
                 print("Setting turn speed", -TURN_SPEED)
+                reset_tdot_cmd = True
             elif keys[pygame.K_d]:
                 writer.write(b'{"cmd":1,"args":[%6f]}\n' % TURN_SPEED)
                 print("Setting turn speed: ", TURN_SPEED)
-            else:
-                #writer.write(b'{"cmd":1,"args":[0]}\n')
-                #print("Setting turn speed: ", 0)
-                pass
+                reset_tdot_cmd = True
+            elif(reset_tdot_cmd):
+                writer.write(b'{"cmd":1,"args":[0]}\n')
+                print("Setting turn speed: ", 0)
+                reset_tdot_cmd = False
            
             # (q,z) increase height and decrease height
             if keys[pygame.K_q]:
