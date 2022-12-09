@@ -33,6 +33,7 @@ include(cmake/global_definition.cmake)
 include(cmake/PCL.cmake)
 include(cmake/OpenCV.cmake)
 include(cmake/boost.cmake)
+include(cmake/ncurse.cmake)
 
 catkin_package()
 

@@ -7,6 +7,7 @@
 //#include "glog/logging.h"
 #include "global_definition/global_definition.h"
 #include <iostream>
+#include <ncurses.h>
 
 
 int main(int argc, char *argv[]){
@@ -25,6 +26,12 @@ int main(int argc, char *argv[]){
 //
 //    LOG(INFO) << "localization_node/screen: " << screen;
 
+    // ncurse non-blocking keyboard input
+    initscr();
+    cbreak();
+    noecho();
+    nodelay(stdscr, TRUE);
+
     std::shared_ptr<LocalizationFlow> localization_flow_ptr = std::make_shared<LocalizationFlow>(nh);
 
     double fps;
@@ -35,6 +42,8 @@ int main(int argc, char *argv[]){
         localization_flow_ptr->Run();
         rate.sleep();
     }
+
+    endwin(); // remove ncurse's influence on the terminal window
 
     return 0;
 }

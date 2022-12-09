@@ -32,6 +32,8 @@ class LocalizationFlow{
 public:
     LocalizationFlow(ros::NodeHandle &nh);
 
+    void resetZeroCmd();
+
     //// -------- General Data Processing ---------------
     void Run();
     bool readData();
@@ -84,6 +86,9 @@ private:
     PID wheel_fwd_controller_pid;
 
     // params
+    char key;
+    char state;
+    float target_dis;
     // visualization opt
     bool cv_vis;
     bool rviz_ball_cloud, rviz_vels;
