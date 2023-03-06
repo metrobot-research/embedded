@@ -87,7 +87,7 @@ using namespace BLA;
 #define MAX_HEAD_VEL 0.6
 #define MAX_GRASPER_VEL 0.6
 // Time constants
-#define TIMER_INTERVAL_MS 10. // Interval between timer interrupts
+#define TIMER_INTERVAL_MS 7. // Interval between timer interrupts
 
 #define GET_VARIABLE_NAME(Variable) = #Variable
 
@@ -239,9 +239,9 @@ double xdot = 0; // Current average velocity of left and right wheels
 double xdot_f = 0; // Filtered fwd wheel velocity
 
 // PID constants for forward/backward tilt (loop two)
-double Kp_phi = 6000;
-double Ki_phi = 80000;
-double Kd_phi = 2000;
+double Kp_phi = 12500;
+double Ki_phi = 0;
+double Kd_phi = 1700;
 
 
 double r_phi = 0;   // Commanded tilt in radians
@@ -251,9 +251,11 @@ double phi_acc = 0; // Tilt calculated by accelerometer
 
 // PID Constants for Phidot
 double phidot = 0;  // Rate of change of phi from gyro only
+double phidot_f = 0;
 double r_phidot = 0; // commanded phidot angle. This should pretty much always be zero (balanced).
-double Kp_phidot = 1;
-double Ki_phidot = 1;
+double delta_phi = 0;
+double Kp_phidot = .3;
+double Ki_phidot = 0;
 double Kd_phidot = 0.1;
 
 // PID constants for turning velocity
@@ -297,11 +299,17 @@ double neck_angle = 0;   // Current neck angle (nominal angle, for both, to spec
 double NECK_COMMAND_MIN = 0.0; // The maximum neck angle that can be commanded
 double NECK_COMMAND_MAX = 10.0; // The minimum neck angle that can be commanded
 int loopCompletionCount = 0;
+
+// IMU Calibration Variables:
+float avgRawGyrX = -18.3;
+float avgRawGyrY = -65.7;
+float avgRawGyrZ = -1.55;
+
 // PID Loops:
 // Phidot: tracks falling over rate of change to 0. Output: commanded angle for robot to take.
-// PID phidot_PID(&phidot,&delta_phi,&r_phidot, Kp_phidot, Ki_phidot, Kd_phidot, DIRECT);
+PID phidot_PID(&phidot_f,&delta_phi,&r_phidot, Kp_phidot, Ki_phidot, Kd_phidot, DIRECT);
 // Phi: commands wheels with u_phi to track the commanded angle which is an output of the above loop.
-PID phi_PID(&phi, &u_phi, &r_phi, Kp_phi, Ki_phi, Kd_phi, DIRECT);
+PID phi_PID(&phi, &u_phi, &r_phi, Kp_phi, Ki_phi, Kd_phi, REVERSE);
 /* 
 Velocity: commands wheels to have a set velocity. Should have slower response time than other loops to allow 
 for simultaneous balancing and velocity control. Should also probably have negative Kp term & medium-high Ki term 
@@ -505,7 +513,7 @@ void driveServos(float u_grasper, float u_neck)
     // Grasper (SRV_2)
     servo_pwm.setPWM(GRASPER_SERVO,0,0); // Hopefully this just leaves free rotation an option! Investigate
     // Nodding (SRV_1)
-    servo_pwm.setPWM(NECK_SERVO,0,0);
+    servo_pwm.setPWM(NECK_SERVO,0,1);
   }
 }
 
@@ -526,12 +534,20 @@ void driveServosVelocity(float grasper_vel_cmd, float head_vel_cmd, float &u_gra
 
 // Debug function to print balancing data;
 void printBalancingData(){
-  Serial.println(">x_dot:"+String(xdot,4));
-  Serial.println(">r_x_dot:"+String(r_xdot,4));
+  // Serial.println(">x_dot:"+String(xdot,4));
+  // Serial.println(">r_x_dot:"+String(r_xdot,4));
   Serial.println(">phi:"+String(phi,4));
   Serial.println(">r_phi:"+String(r_phi,4));
-  Serial.println(">phidot:"+String(phidot,4));
+  Serial.println(">phidot_f:"+String(phidot_f,4));
+  Serial.println(">delta_phi:"+String(delta_phi,4));
   Serial.println(">u_phi:"+String(u_phi,4));  
+}
+
+// Debug function to print turning data:
+void printTurningData(){
+  Serial.println(">t_dot:"+String(theta_dot,4));
+  Serial.println(">r_t_dot:"+String(r_theta_dot,4));
+  Serial.println(">u_t_dot:"+String(u_theta_dot,4));
 }
 
 // Debug function to print hip angle data
@@ -547,6 +563,21 @@ void printManipData(){
   Serial.println(">headVelCmd:"+String(head_vel_cmd,4));
   Serial.println(">grasper_angle:"+String(u_grasper,4));
   Serial.println(">grasperVelCmd:"+String(grasper_vel_cmd,4));
+}
+
+void printIMUData(){
+  // Used to recalibrate IMU
+  xyzFloat rawGyrValues = IMU.getGyrRawValues();
+  avgRawGyrX = .9995*avgRawGyrX + .0005*rawGyrValues.x;
+  avgRawGyrY = .9995*avgRawGyrY + .0005*rawGyrValues.y;
+  avgRawGyrZ = .9995*avgRawGyrZ + .0005*rawGyrValues.z;
+  // Serial.println(">agy.x:"+String(avgRawGyrX,4));
+  // Serial.println(">agy.y:"+String(avgRawGyrY,4));
+  // Serial.println(">agy.z:"+String(avgRawGyrZ,4));
+  Serial.println(">acc.x:"+String(acc_vec(0),4));
+  Serial.println(">acc.y:"+String(acc_vec(1),4));
+  Serial.println(">acc.z:"+String(acc_vec(2),4));
+
 }
 
 BLA::Matrix<3> crossProduct(BLA::Matrix<3> u, BLA::Matrix<3> v){
@@ -582,6 +613,7 @@ void getAngles()
   phi = phi - gyr.y * TIMER_INTERVAL_MS / 1000. * (PI / 180.); // Integrate gyro angular velocity about the y-axis to get tilt
   theta_dot = gyr.z * TIMER_INTERVAL_MS / 1000. * (PI / 180.);
   phidot = -gyr.y * (PI / 180.); // Angular velocity as detected by gyro, no filtering
+  phidot_f = CF_TIME_CONSTANT_GYR*phidot_f + (1-CF_TIME_CONSTANT_GYR)*phidot;
   // Calculate tilt angle from accelerometer data
   acc_vec = {acc.x, acc.y, acc.z};
   gyr_vec = {gyr.x, gyr.y, gyr.z};
@@ -606,12 +638,12 @@ void init_phi_PID()
   phi_PID.SetOutputLimits(-MAX_PWM, MAX_PWM);
   phi_PID.SetMode(AUTOMATIC);
 }
-// void init_phidot_PID()
-// {
-//   phidot_PID.SetSampleTime(TIMER_INTERVAL_MS);
-//   phidot_PID.SetOutputLimits(-MAX_PHI, MAX_PHI);
-//   phidot_PID.SetMode(AUTOMATIC);
-// }
+void init_phidot_PID()
+{
+  phidot_PID.SetSampleTime(TIMER_INTERVAL_MS);
+  phidot_PID.SetOutputLimits(-MAX_PHI, MAX_PHI);
+  phidot_PID.SetMode(AUTOMATIC);
+}
 // Initialize turning velocity PID loop
 void init_turning_velocity_PID()
 {
@@ -830,7 +862,7 @@ void processReceivedBTValue(char b, String &command)
         break;
       case 8: // Set phidot PID constants
         jsonArgsToFloat(arguments,Kp_phidot,Ki_phidot,Kd_phidot);
-        // set_pid_constants(phidot_PID,Kp_phidot,Ki_phidot,Kd_phidot);
+        set_pid_constants(phidot_PID,Kp_phidot,Ki_phidot,Kd_phidot);
         break;
       case 9: 
         jsonArgsToFloat(arguments,Kp_neck,Ki_neck,Kd_neck);
@@ -942,6 +974,7 @@ void processSerialCommand(char b)
     // Serial.println("hipAngle:"+String(latest_command.message.hipAngle, 4));
     // Serial.println("grasperVel:"+String(latest_command.message.grasperVelocity, 4));
     head_vel_cmd = latest_command.message.headVel;
+    r_theta_dot = latest_command.message.tdot_cmd;
     serialIndex=0;
   }
   return;
@@ -1004,7 +1037,7 @@ void publishSensorValues()
 }
 
 void balance(){
-    if(!(close_to_balanced==1)){ // Check if the robot is closet to balanced
+    if(!(close_to_balanced==1)){ // Check if the robot is no longer close to balanced
       // Robot is not close to balanced
       if ((PHI_BALANCED - PHI_BALANCED_RANGE)<phi&&phi<(PHI_BALANCED + PHI_BALANCED_RANGE)){
         // The robot is close to balanced
@@ -1019,17 +1052,19 @@ void balance(){
     else{
       if (!((PHI_BALANCED - PHI_BALANCED_RANGE)<phi&&phi<(PHI_BALANCED + PHI_BALANCED_RANGE))){
         close_to_balanced=0;
+        u_phi = 0;
       }
       else{
-        Serial.println("1");
+        // Serial.println("1");
         velocity_PID.Compute();
-        // phidot_PID.Compute();
-        r_phi = u_xdot;
+        phidot_PID.Compute();
+        r_phi = phi + delta_phi;
         phi_PID.Compute();
         turning_velocity_PID.Compute();
         hips_PID.Compute();
-        Serial.println("u_phi:"+String(u_phi,3));
+        // Serial.println("u_phi:"+String(u_phi,3));
         driveWheelMotors(u_phi + u_theta_dot, u_phi - u_theta_dot);
+        // driveWheelMotors(u_theta_dot,-u_theta_dot);
       }
     }
 }
@@ -1074,7 +1109,8 @@ void setup()
   delay(1000);
 
   // Set IMU zero values and other parameters
-  IMU.setGyrOffsets(-27.5680, -88.0617, -4.2623); // gyr.y was -86.3617 before 
+  // IMU.setGyrOffsets(-27.5680, -88.0617, -4.2623); // gyr.y was -86.3617 before // OLD VALUES
+  IMU.setGyrOffsets(-18.3, -64.7, -1.5); // NEW VALUES AS OF 12/12/22
   IMU.setGyrRange(ICM20948_GYRO_RANGE_250);
   IMU.setGyrDLPF(ICM20948_DLPF_6);
   IMU.setAccRange(ICM20948_ACC_RANGE_2G);
@@ -1157,7 +1193,7 @@ void setup()
   delay(2000);
 
   init_phi_PID();
-  // init_phidot_PID();
+  init_phidot_PID();
   init_velocity_PID();
   init_turning_velocity_PID();
   init_hips_PID();
@@ -1198,9 +1234,11 @@ void loop()
     // Serial.println(">g_u:"+String(u_grasper));
     // Serial.println(">g_v_cmd:"+String(grasper_vel_cmd));
     publishSensorValues();
-    if(loopCompletionCount>5){
+    if(loopCompletionCount>6){
       printBalancingData();
+      // printTurningData();
       // printManipData();
+      printIMUData();
       // Serial.println("Close to balanced:"+String(close_to_balanced));
       loopCompletionCount=0;
     }    
