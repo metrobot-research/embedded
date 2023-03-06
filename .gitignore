@@ -215,3 +215,8 @@ $RECYCLE.BIN/
 # End of https://www.toptal.com/developers/gitignore/api/vim,emacs,macos,visualstudiocode,platformio,c++,linux,windows
 
 .vscode
+
+*/build/
+*/devel/
+build/
+devel/
